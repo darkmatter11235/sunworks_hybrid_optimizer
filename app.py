@@ -335,11 +335,8 @@ with tab1:
                 # Get annual energy delivered (convert MWh to kWh)
                 first_year_energy_kwh = df_sim['delivered_total'].sum() * 1000  # MWh to kWh
                 
-                # Apply degradation over project lifetime
-                annual_energy_kwh = np.zeros(fin_params.project_lifetime_years)
-                for year in range(fin_params.project_lifetime_years):
-                    degradation_factor = (1 - cfg.solar_degrad) ** year
-                    annual_energy_kwh[year] = first_year_energy_kwh * degradation_factor
+                # Pass constant energy - calculate_lcoe will apply degradation internally
+                annual_energy_kwh = np.full(fin_params.project_lifetime_years, first_year_energy_kwh)
                 
                 # Calculate LCOE
                 lcoe_results = calc_lcoe_func(
