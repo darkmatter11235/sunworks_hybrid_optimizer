@@ -310,8 +310,25 @@ with tab1:
             st.session_state.lcoe = lcoe
             st.session_state.simulation_run = True
             
-        st.success("✅ Simulation complete!")
-        st.rerun()
+        st.success("✅ Simulation complete! Click on the **📊 Simulation Results** tab above to see full details.")
+        
+        # Show quick preview
+        st.subheader("Quick Results Preview")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            st.metric("Solar Generation", f"{df_sim['solar_gen'].sum():,.0f} MWh")
+        with col2:
+            st.metric("Wind Generation", f"{df_sim['wind_gen'].sum():,.0f} MWh")
+        with col3:
+            st.metric("BESS Discharge", f"{df_sim['bess_discharge_inj'].sum():,.0f} MWh")
+        with col4:
+            st.metric("Grid Import", f"{df_sim['from_grid'].sum():,.0f} MWh")
+        with col5:
+            if lcoe:
+                st.metric("LCOE", f"₹{lcoe:.4f}/kWh")
+            else:
+                st.metric("LCOE", "N/A")
 
 with tab2:
     if not st.session_state.simulation_run:
