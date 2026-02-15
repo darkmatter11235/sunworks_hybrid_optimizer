@@ -466,47 +466,156 @@ with tab2:
         }
         st.dataframe(pd.DataFrame(metrics_data), width='stretch', hide_index=True)
         
+        # Multi-Year Analysis
+        st.subheader(f"📊 Multi-Year Analysis ({project_years} Years)")
+        
+        # Calculate metrics for all years
+        if 'annual_energy_kwh' in st.session_state:
+            # Year 1 base metrics (MWh)
+            year1_solar = df_sim['solar_gen'].sum()
+            year1_wind = df_sim['wind_gen'].sum()
+            year1_bess_discharge = df_sim['bess_discharge_inj'].sum()
+            year1_grid = df_sim['from_grid'].sum()
+            year1_delivered = df_sim['delivered_total'].sum()
+            year1_curtailed = df_sim['curtailed'].sum()
+            
+            # Build multi-year dataframe
+            years_list = []
+            for year_num in range(1, project_years + 1):
+                deg_factor = (1 - cfg.solar_degrad) ** (year_num - 1)
+                years_list.append({
+                    'Year': year_num,
+                    'Solar (GWh)': year1_solar * deg_factor / 1000,
+                    'Wind (GWh)': year1_wind * deg_factor / 1000,
+                    'BESS Discharge (GWh)': year1_bess_discharge * deg_factor / 1000,
+                    'Grid Import (GWh)': year1_grid * deg_factor / 1000,
+                    'Delivered (GWh)': year1_delivered * deg_factor / 1000,
+                    'Curtailed (GWh)': year1_curtailed * deg_factor / 1000,
+                    'Degradation Factor': f"{deg_factor:.4f}"
+                })
+            
+            df_multiyear = pd.DataFrame(years_list)
+            
+            # Show table with option to expand
+            with st.expander(f"📋 Annual Summary Table (All {project_years} Years)", expanded=False):
+                st.dataframe(df_multiyear, width='stretch', hide_index=True, height=400)
+                
+                # Download button
+                csv = df_multiyear.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download CSV",
+                    data=csv,
+                    file_name=f"multiyear_results_{project_years}years.csv",
+                    mime="text/csv"
+                )
+        
         # Charts
         st.subheader("📈 Visualizations")
         
-        # Annual Energy with Degradation
+        # Multi-year trends
         if 'annual_energy_kwh' in st.session_state:
-            annual_energy_kwh = st.session_state.annual_energy_kwh
-            years = np.arange(1, len(annual_energy_kwh) + 1)
+            col_viz1, col_viz2 = st.columns(2)
             
-            fig_degradation = go.Figure()
-            fig_degradation.add_trace(go.Scatter(
-                x=years, 
-                y=annual_energy_kwh / 1e9,  # Convert to GWh
-                name='Annual Energy',
-                fill='tozeroy',
-                line=dict(color='#2E86AB', width=2)
-            ))
-            fig_degradation.update_layout(
-                title=f"Annual Energy Delivery Over {project_years} Years (with {cfg.solar_degrad*100:.2f}% degradation)",
-                xaxis_title="Year",
-                yaxis_title="Energy (GWh)",
-                hovermode='x unified',
-                height=400
-            )
-            st.plotly_chart(fig_degradation, width='stretch')
+            with col_viz1:
+                # Annual Energy with Degradation
+                annual_energy_kwh = st.session_state.annual_energy_kwh
+                years = np.arange(1, len(annual_energy_kwh) + 1)
+                
+                fig_degradation = go.Figure()
+                fig_degradation.add_trace(go.Scatter(
+                    x=years, 
+                    y=annual_energy_kwh / 1e9,  # Convert to GWh
+                    name='Annual Energy',
+                    fill='tozeroy',
+                    line=dict(color='#2E86AB', width=2)
+                ))
+                fig_degradation.update_layout(
+                    title=f"Energy Delivery ({cfg.solar_degrad*100:.2f}% degradation)",
+                    xaxis_title="Year",
+                    yaxis_title="Energy (GWh)",
+                    hovermode='x unified',
+                    height=350
+                )
+                st.plotly_chart(fig_degradation, width='stretch')
+            
+            with col_viz2:
+                # Generation Mix Over Time
+                fig_mix = go.Figure()
+                years = np.arange(1, project_years + 1)
+                
+                for year_num in years:
+                    deg_factor = (1 - cfg.solar_degrad) ** (year_num - 1)
+                
+                fig_mix.add_trace(go.Bar(
+                    x=years[::max(1, project_years//10)],  # Sample every N years for clarity
+                    y=[year1_solar * (1 - cfg.solar_degrad) ** (y - 1) / 1000 for y in years[::max(1, project_years//10)]],
+                    name='Solar',
+                    marker_color='#FFA500'
+                ))
+                fig_mix.add_trace(go.Bar(
+                    x=years[::max(1, project_years//10)],
+                    y=[year1_bess_discharge * (1 - cfg.solar_degrad) ** (y - 1) / 1000 for y in years[::max(1, project_years//10)]],
+                    name='BESS',
+                    marker_color='#00AA00'
+                ))
+                fig_mix.add_trace(go.Bar(
+                    x=years[::max(1, project_years//10)],
+                    y=[year1_grid * (1 - cfg.solar_degrad) ** (y - 1) / 1000 for y in years[::max(1, project_years//10)]],
+                    name='Grid',
+                    marker_color='#AA0000'
+                ))
+                fig_mix.update_layout(
+                    title="Generation Mix Over Time",
+                    xaxis_title="Year",
+                    yaxis_title="Energy (GWh)",
+                    barmode='stack',
+                    height=350,
+                    hovermode='x unified'
+                )
+                st.plotly_chart(fig_mix, width='stretch')
+        
+        # Detailed Hourly Analysis
+        st.subheader("🔍 Detailed Hourly Analysis")
+        
+        # Year selector
+        selected_year = st.selectbox(
+            "Select Year to View",
+            options=list(range(1, project_years + 1)),
+            index=0,
+            help="View hourly simulation data for a specific year (degradation applied)"
+        )
+        
+        # Apply degradation to Year 1 data for selected year
+        if selected_year > 1:
+            deg_factor = (1 - cfg.solar_degrad) ** (selected_year - 1)
+            df_year = df_sim.copy()
+            # Apply degradation to generation columns
+            for col in ['solar_gen', 'wind_gen', 'gen_total', 'to_consumption_inj', 
+                       'bess_charge_inj', 'bess_discharge_inj', 'direct_delivered',
+                       'from_bess_delivered', 'delivered_total', 'curtailed']:
+                if col in df_year.columns:
+                    df_year[col] = df_year[col] * deg_factor
+            st.info(f"📉 Showing Year {selected_year} data (degradation factor: {deg_factor:.4f})")
+        else:
+            df_year = df_sim
+            st.info(f"📊 Showing Year 1 data (no degradation)")
         
         # Sample week
         week_start = 24 * 7 * 20  # Week 20
         week_end = week_start + 24 * 7
-        df_week = df_sim.iloc[week_start:week_end]
+        df_week = df_year.iloc[week_start:week_end]
         
         fig1 = go.Figure()
         fig1.add_trace(go.Scatter(x=df_week.index, y=df_week['solar_gen'], name='Solar', fill='tozeroy'))
         fig1.add_trace(go.Scatter(x=df_week.index, y=df_week['wind_gen'], name='Wind', fill='tozeroy'))
         fig1.add_trace(go.Scatter(x=df_week.index, y=df_week['load_total'], name='Load', line=dict(color='red', dash='dash')))
-        fig1.update_layout(title="Generation vs Load (Sample Week)", xaxis_title="Hour", yaxis_title="MW", hovermode='x unified')
+        fig1.update_layout(title=f"Generation vs Load - Week 20, Year {selected_year}", xaxis_title="Hour", yaxis_title="MW", hovermode='x unified')
         st.plotly_chart(fig1, width='stretch')
         
         # BESS SOC
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(x=df_week.index, y=df_week['soc_mwh'], name='SOC', fill='tozeroy'))
-        fig2.update_layout(title="BESS State of Charge (Sample Week)", xaxis_title="Hour", yaxis_title="MWh", hovermode='x')
+        fig2.update_layout(title=f"BESS State of Charge - Week 20, Year {selected_year}", xaxis_title="Hour", yaxis_title="MWh", hovermode='x')
         st.plotly_chart(fig2, width='stretch')
 
 with tab3:
