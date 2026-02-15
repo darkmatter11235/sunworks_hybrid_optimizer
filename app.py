@@ -303,8 +303,12 @@ with tab1:
                 'load_mw': df_load['load_mw'].values,
             })
             
-            # Run simulation
+            # Run simulation for Year 1
             df_sim = simulate_hourly(cfg, df_profiles)
+            
+            # Store Year 1 results for visualization
+            st.session_state.df_sim = df_sim
+            st.session_state.cfg = cfg
             
             # Calculate LCOE
             try:
@@ -342,11 +346,21 @@ with tab1:
                     project_lifetime_years=project_lifetime_years  # Use slider value
                 )
                 
-                # Get annual energy delivered (convert MWh to kWh)
-                first_year_energy_kwh = df_sim['delivered_total'].sum() * 1000  # MWh to kWh
+                # Calculate multi-year energy delivery with degradation
+                # Year 1 energy (MWh)
+                year1_energy_mwh = df_sim['delivered_total'].sum()
+                year1_energy_kwh = year1_energy_mwh * 1000  # Convert to kWh
                 
-                # Pass constant energy - calculate_lcoe will apply degradation internally
-                annual_energy_kwh = np.full(fin_params.project_lifetime_years, first_year_energy_kwh)
+                # Pass constant Year 1 energy - calculate_lcoe will apply degradation internally
+                annual_energy_kwh = np.full(project_lifetime_years, year1_energy_kwh)
+                
+                # Also pre-calculate degraded energy for display purposes
+                annual_energy_degraded_kwh = np.zeros(project_lifetime_years)
+                for year_idx in range(project_lifetime_years):
+                    # Note: calculate_lcoe uses (1 - system_degradation) ** (n - 1) where n = year + 1
+                    # So year 0 (n=1) has factor (1-deg)^0 = 1, year 1 (n=2) has factor (1-deg)^1, etc.
+                    degradation_factor = (1 - cfg.solar_degrad) ** year_idx
+                    annual_energy_degraded_kwh[year_idx] = year1_energy_kwh * degradation_factor
                 
                 # Calculate LCOE
                 lcoe_results = calc_lcoe_func(
@@ -358,20 +372,23 @@ with tab1:
                 )
                 lcoe = lcoe_results['lcoe_inr_per_kwh']
                 
+                # Store additional multi-year metrics (use degraded energy for display)
+                st.session_state.annual_energy_kwh = annual_energy_degraded_kwh
+                st.session_state.total_lifetime_energy_gwh = annual_energy_degraded_kwh.sum() / 1e9
+                st.session_state.project_lifetime_years = project_lifetime_years
+                
             except Exception as e:
                 lcoe = None
                 st.warning(f"Could not calculate LCOE: {e}")
             
-            # Store in session
-            st.session_state.df_sim = df_sim
-            st.session_state.cfg = cfg
+            # Store final results in session
             st.session_state.lcoe = lcoe
             st.session_state.simulation_run = True
             
         st.success("✅ Simulation complete! Click on the **📊 Simulation Results** tab above to see full details.")
         
         # Show quick preview
-        st.subheader("Quick Results Preview")
+        st.subheader("Quick Results Preview (Year 1)")
         col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
@@ -384,7 +401,7 @@ with tab1:
             st.metric("Grid Import", f"{df_sim['from_grid'].sum():,.0f} MWh")
         with col5:
             if lcoe:
-                st.metric("LCOE", f"₹{lcoe:.4f}/kWh")
+                st.metric("LCOE", f"₹{lcoe:.4f}/kWh", help=f"Based on {project_lifetime_years}-year projection")
             else:
                 st.metric("LCOE", "N/A")
 
@@ -395,10 +412,16 @@ with tab2:
         df_sim = st.session_state.df_sim
         cfg = st.session_state.cfg
         lcoe = st.session_state.lcoe
+        project_years = st.session_state.get('project_lifetime_years', 25)
+        total_lifetime_gwh = st.session_state.get('total_lifetime_energy_gwh', 0)
         
         st.header("Simulation Results")
         
-        # Key metrics
+        # Project Summary
+        st.subheader(f"📅 Project: {project_years} Years | Lifetime Energy: {total_lifetime_gwh:,.1f} GWh")
+        
+        # Key metrics (Year 1)
+        st.markdown("### Year 1 Results")
         col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
@@ -445,6 +468,28 @@ with tab2:
         
         # Charts
         st.subheader("📈 Visualizations")
+        
+        # Annual Energy with Degradation
+        if 'annual_energy_kwh' in st.session_state:
+            annual_energy_kwh = st.session_state.annual_energy_kwh
+            years = np.arange(1, len(annual_energy_kwh) + 1)
+            
+            fig_degradation = go.Figure()
+            fig_degradation.add_trace(go.Scatter(
+                x=years, 
+                y=annual_energy_kwh / 1e9,  # Convert to GWh
+                name='Annual Energy',
+                fill='tozeroy',
+                line=dict(color='#2E86AB', width=2)
+            ))
+            fig_degradation.update_layout(
+                title=f"Annual Energy Delivery Over {project_years} Years (with {cfg.solar_degrad*100:.2f}% degradation)",
+                xaxis_title="Year",
+                yaxis_title="Energy (GWh)",
+                hovermode='x unified',
+                height=400
+            )
+            st.plotly_chart(fig_degradation, width='stretch')
         
         # Sample week
         week_start = 24 * 7 * 20  # Week 20
