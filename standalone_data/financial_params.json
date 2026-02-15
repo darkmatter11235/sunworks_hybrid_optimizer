@@ -1,0 +1,17 @@
+{
+  "tax_rate": 0.2782,
+  "discount_rate": 0.075,
+  "equity_percent": 0.3,
+  "loan_percent": 0.7,
+  "loan_interest_rate": 0.1,
+  "loan_term_years": 10,
+  "project_life_years": 1184,
+  "solar_cost_per_mw": 0.095,
+  "wind_cost_per_mw": 50000000.0,
+  "bess_power_cost_per_mw": 5000000.0,
+  "bess_energy_cost_per_mwh": 10000000.0,
+  "solar_om_percent": 0.015,
+  "wind_om_percent": 0.02,
+  "bess_om_percent": 0.01,
+  "insurance_percent": 0.005
+}

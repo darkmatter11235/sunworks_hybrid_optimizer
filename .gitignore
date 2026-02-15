@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Data files (too large for git)
+*.xlsx
+*.xls
+standalone_data/*.csv
+
+# Keep JSON configs (small)
+!standalone_data/*.json
+!configs/*.json
+
+# Results
+results/
+debug/
+*.csv
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
