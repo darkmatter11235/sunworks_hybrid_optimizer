@@ -251,7 +251,7 @@ with tab1:
         )
     
     # Run simulation button
-    if st.button("▶️ Run Simulation", type="primary", use_container_width=True):
+    if st.button("▶️ Run Simulation", type="primary", width='stretch'):
         with st.spinner("Running simulation..."):
             # Create config
             from dataclasses import fields
@@ -366,7 +366,7 @@ with tab2:
                 df_sim['delivered_total'].sum(),
             ]
         }
-        st.dataframe(pd.DataFrame(metrics_data), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(metrics_data), width='stretch', hide_index=True)
         
         # Charts
         st.subheader("📈 Visualizations")
@@ -381,13 +381,13 @@ with tab2:
         fig1.add_trace(go.Scatter(x=df_week.index, y=df_week['wind_gen'], name='Wind', fill='tozeroy'))
         fig1.add_trace(go.Scatter(x=df_week.index, y=df_week['load_total'], name='Load', line=dict(color='red', dash='dash')))
         fig1.update_layout(title="Generation vs Load (Sample Week)", xaxis_title="Hour", yaxis_title="MW", hovermode='x unified')
-        st.plotly_chart(fig1, use_container_width=True)
+        st.plotly_chart(fig1, width='stretch')
         
         # BESS SOC
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(x=df_week.index, y=df_week['soc_mwh'], name='SOC', fill='tozeroy'))
         fig2.update_layout(title="BESS State of Charge (Sample Week)", xaxis_title="Hour", yaxis_title="MWh", hovermode='x')
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width='stretch')
 
 with tab3:
     st.header("🎯 Optimization")
@@ -445,7 +445,7 @@ with tab3:
         help="More configs = better optimization but slower"
     )
     
-    if st.button("🚀 Run Optimization", type="primary", use_container_width=True):
+    if st.button("🚀 Run Optimization", type="primary", width='stretch'):
         st.warning("⚠️ Optimization feature coming soon! Use optimizer.py for now.")
         st.code(f"""
 # Run optimization from command line:
