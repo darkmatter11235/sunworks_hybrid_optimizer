@@ -11,17 +11,17 @@ ENV/
 # Data files (too large for git)
 *.xlsx
 *.xls
-standalone_data/*.csv
 
-# Keep JSON configs (small)
-!standalone_data/*.json
-!configs/*.json
-
-# Results
+# Results - exclude CSV files except in specific directories
 results/
 debug/
 *.csv
 *.log
+
+# Keep demo data for Streamlit Cloud deployment
+!standalone_data/*.csv
+!standalone_data/*.json
+!configs/*.json
 
 # IDE
 .vscode/
