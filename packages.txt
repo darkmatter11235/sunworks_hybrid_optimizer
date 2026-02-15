@@ -1,2 +1,1 @@
-# System dependencies for Streamlit Cloud
-# (None needed for this app - all Python packages)
+
