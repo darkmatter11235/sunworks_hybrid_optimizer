@@ -14,7 +14,6 @@ import tempfile
 import io
 
 from hourly_sim_skeleton import Config, simulate_hourly, assign_tod
-from lcoe_calculator import calculate_lcoe
 
 # Page config
 st.set_page_config(
@@ -299,7 +298,59 @@ with tab1:
             
             # Calculate LCOE
             try:
-                lcoe = calculate_lcoe(cfg, df_sim, str(financial_file))
+                from lcoe_calculator import (
+                    CostParameters, FinancialParameters,
+                    calculate_project_cost, calculate_annual_opex, calculate_lcoe as calc_lcoe_func
+                )
+                
+                # Load financial parameters from JSON
+                with open(financial_file) as f:
+                    fin_data = json.load(f)
+                
+                # Create parameter objects with defaults (can be customized later)
+                cost_params = CostParameters()
+                fin_params = FinancialParameters()
+                
+                # Calculate wind capacity in MW (assume 3.3 MW per WTG if not specified)
+                wind_capacity_per_wtg = default_config.get('wind_capacity_per_wtg', 3.3)
+                wind_mw = cfg.wind_wtg_count * wind_capacity_per_wtg
+                
+                # Calculate project costs
+                project_cost = calculate_project_cost(
+                    cfg.solar_ac_mw, 
+                    wind_mw, 
+                    cfg.bess_power_mw, 
+                    cfg.bess_energy_mwh, 
+                    cost_params
+                )
+                
+                # Calculate annual OPEX
+                annual_opex = calculate_annual_opex(
+                    cfg.solar_ac_mw, 
+                    wind_mw, 
+                    cfg.bess_energy_mwh, 
+                    cost_params
+                )
+                
+                # Get annual energy delivered (convert MWh to kWh)
+                first_year_energy_kwh = df_sim['delivered_total'].sum() * 1000  # MWh to kWh
+                
+                # Apply degradation over project lifetime
+                annual_energy_kwh = np.zeros(fin_params.project_lifetime_years)
+                for year in range(fin_params.project_lifetime_years):
+                    degradation_factor = (1 - cfg.solar_degrad) ** year
+                    annual_energy_kwh[year] = first_year_energy_kwh * degradation_factor
+                
+                # Calculate LCOE
+                lcoe_results = calc_lcoe_func(
+                    project_cost, 
+                    annual_opex, 
+                    annual_energy_kwh, 
+                    fin_params, 
+                    cost_params
+                )
+                lcoe = lcoe_results['lcoe_inr_per_kwh']
+                
             except Exception as e:
                 lcoe = None
                 st.warning(f"Could not calculate LCOE: {e}")
