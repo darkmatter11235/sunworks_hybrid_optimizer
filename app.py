@@ -258,20 +258,23 @@ with tab1:
             valid_fields = {f.name for f in fields(Config)}
             filtered_default = {k: v for k, v in default_config.items() if k in valid_fields}
             
-            cfg = Config(
-                **filtered_default,
-                solar_ac_mw=solar_ac_mw,
-                dc_ac_ratio=dc_ac_ratio,
-                solar_degrad=solar_degrad,
-                wind_wtg_count=wind_wtg_count,
-                wind_degrad=wind_degrad,
-                bess_power_mw=bess_power_mw,
-                bess_energy_mwh=bess_energy_mwh,
-                one_way_eff=bess_eff,
-                total_load_mw=total_load_mw,
-                contracted_demand_mw=contracted_demand_mw,
-                evac_limit_mw=evac_limit_mw,
-            )
+            # Override with user inputs
+            user_inputs = {
+                'solar_ac_mw': float(solar_ac_mw),
+                'dc_ac_ratio': float(dc_ac_ratio),
+                'solar_degrad': float(solar_degrad),
+                'wind_wtg_count': float(wind_wtg_count),
+                'wind_degrad': float(wind_degrad),
+                'bess_power_mw': float(bess_power_mw),
+                'bess_energy_mwh': float(bess_energy_mwh),
+                'one_way_eff': float(bess_eff),
+                'total_load_mw': float(total_load_mw),
+                'contracted_demand_mw': float(contracted_demand_mw),
+                'evac_limit_mw': float(evac_limit_mw),
+            }
+            filtered_default.update(user_inputs)
+            
+            cfg = Config(**filtered_default)
             
             # Load profiles
             df_gen = pd.read_csv(profiles_file)
