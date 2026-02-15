@@ -50,6 +50,7 @@ class FinancialParameters:
     discount_rate: float = 0.0749997
     interest_rate: float = 0.095
     system_degradation: float = 0.005
+    opex_escalation: float = 0.05  # 5% annual OPEX escalation
     
     # Loan structure
     equity_fraction: float = 0.30
@@ -200,17 +201,18 @@ def calculate_lcoe(project_cost: float,
         n = year + 1
         loan_payment_npv += loan_payments[year] / ((1 + dr) ** n)
     
-    # Operating costs after tax: AO × (1-TR) / (1+DR)^n
+    # Operating costs with escalation (tax applied in final formula): AO × (1+esc)^year / (1+DR)^n
     opex_npv = 0.0
     for year in range(n_years):
         n = year + 1
-        opex_npv += annual_opex * (1 - tr) / ((1 + dr) ** n)
+        escalated_opex = annual_opex * ((1 + fin_params.opex_escalation) ** year)
+        opex_npv += escalated_opex / ((1 + dr) ** n)
     
     # Residual value: RV / (1+DR)^n
     residual_npv = residual_value / ((1 + dr) ** n_years)
     
-    # Total cost NPV
-    total_cost_npv = pci_equity - tax_shield_npv + loan_payment_npv + opex_npv - residual_npv
+    # Total cost NPV (apply tax to OPEX in final formula, matching Excel)
+    total_cost_npv = pci_equity - tax_shield_npv + loan_payment_npv + opex_npv * (1 - tr) - residual_npv
     
     # Energy NPV: Σ kWh × (1-SDR)^n / (1+DR)^n
     energy_npv = 0.0
