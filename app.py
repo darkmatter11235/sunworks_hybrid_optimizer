@@ -417,8 +417,20 @@ with tab2:
         
         st.header("Simulation Results")
         
-        # Project Summary
-        st.subheader(f"📅 Project: {project_years} Years | Lifetime Energy: {total_lifetime_gwh:,.1f} GWh")
+        # Project Summary with LCOE
+        col_summary1, col_summary2, col_summary3 = st.columns(3)
+        
+        with col_summary1:
+            st.metric("📅 Project Lifetime", f"{project_years} years", help="Total project duration")
+        with col_summary2:
+            st.metric("⚡ Lifetime Energy", f"{total_lifetime_gwh:,.1f} GWh", help="Total energy delivered over project lifetime")
+        with col_summary3:
+            if lcoe:
+                st.metric("💰 LCOE", f"₹{lcoe:.4f}/kWh", help=f"Levelized Cost of Energy over {project_years} years")
+            else:
+                st.metric("💰 LCOE", "N/A", help="Could not calculate LCOE")
+        
+        st.divider()
         
         # Key metrics (Year 1)
         st.markdown("### Year 1 Results")
@@ -433,10 +445,7 @@ with tab2:
         with col4:
             st.metric("Grid Import", f"{df_sim['from_grid'].sum():,.0f} MWh")
         with col5:
-            if lcoe:
-                st.metric("LCOE", f"₹{lcoe:.4f}/kWh")
-            else:
-                st.metric("LCOE", "N/A")
+            st.metric("Total Delivered", f"{df_sim['delivered_total'].sum():,.0f} MWh")
         
         # Detailed metrics table
         st.subheader("📋 Detailed Metrics")
@@ -508,6 +517,29 @@ with tab2:
                     file_name=f"multiyear_results_{project_years}years.csv",
                     mime="text/csv"
                 )
+            
+            # Financial Summary
+            if lcoe:
+                with st.expander("💰 Financial Summary & LCOE Breakdown", expanded=False):
+                    st.markdown(f"""
+                    ### LCOE: ₹{lcoe:.4f} per kWh
+                    
+                    **Key Financial Parameters:**
+                    - **Project Cost**: ₹3,949.56 Crore
+                    - **Annual OPEX**: ₹46.48 Crore
+                    - **Project Lifetime**: {project_years} years
+                    - **Discount Rate**: 7.50%
+                    - **Tax Rate**: 27.82%
+                    - **System Degradation**: {cfg.solar_degrad*100:.2f}% per year
+                    - **OPEX Escalation**: 5.0% per year
+                    
+                    **Energy Delivery:**
+                    - **Year 1 Energy**: {year1_delivered:,.0f} MWh ({year1_delivered/1000:.2f} GWh)
+                    - **Lifetime Energy**: {total_lifetime_gwh:,.1f} GWh
+                    - **Average Annual Energy**: {total_lifetime_gwh/project_years:.2f} GWh
+                    
+                    *LCOE represents the total lifecycle cost divided by total energy delivered, considering time value of money.*
+                    """)
         
         # Charts
         st.subheader("📈 Visualizations")
