@@ -1,0 +1,23 @@
+{
+  "total_load_mw": 800.0,
+  "existing_solar_mwp": 0.0,
+  "contracted_demand_mw": 800.0,
+  "evac_limit_mw": 800.0,
+  "tl_loss": 0.035,
+  "wheeling_loss": 0.0,
+  "dc_ac_ratio": 1.45,
+  "solar_ac_mw": 830.0,
+  "solar_degrad": 0.005,
+  "wind_wtg_count": 0,
+  "wind_capacity_per_wtg": 0.0,
+  "wind_expected_cuf": 0.32,
+  "wind_reference_cuf": 0.355587,
+  "wind_degrad": 0.005,
+  "bess_power_mw": 50.0,
+  "bess_energy_mwh": 200.0,
+  "one_way_eff": 0.9486832980505138,
+  "bess_mode": "PV_SHIFT",
+  "soc_start_gwh": 0.0,
+  "p_multiplier": 1.0,
+  "banking_enabled": true
+}
