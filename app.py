@@ -173,7 +173,8 @@ with tab1:
             min_value=0.0,
             max_value=2.0,
             value=float(default_config.get('solar_degrad', 0.005)) * 100,
-            step=0.1
+            step=0.1,
+            key="solar_degrad"
         ) / 100
     
     with col2:
@@ -190,7 +191,8 @@ with tab1:
             min_value=0.0,
             max_value=2.0,
             value=float(default_config.get('wind_degrad', 0.005)) * 100,
-            step=0.1
+            step=0.1,
+            key="wind_degrad"
         ) / 100
     
     with col3:
