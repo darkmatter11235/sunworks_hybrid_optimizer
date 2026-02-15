@@ -249,6 +249,16 @@ with tab1:
             step=10.0
         )
     
+    st.subheader("💰 Financial Parameters")
+    project_lifetime_years = st.slider(
+        "Project Lifetime (Years)",
+        min_value=10,
+        max_value=30,
+        value=25,
+        step=1,
+        help="Number of years for LCOE calculation"
+    )
+    
     # Run simulation button
     if st.button("▶️ Run Simulation", type="primary", width='stretch'):
         with st.spinner("Running simulation..."):
@@ -329,7 +339,7 @@ with tab1:
                     depreciation_rate_early=0.04666666,  # 4.67% for years 1-15
                     depreciation_rate_late=0.03,          # 3% for years 16+
                     depreciation_switchover_year=15,
-                    project_lifetime_years=int(fin_data.get('project_life_years', 25))
+                    project_lifetime_years=project_lifetime_years  # Use slider value
                 )
                 
                 # Get annual energy delivered (convert MWh to kWh)
