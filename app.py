@@ -307,9 +307,35 @@ with tab1:
                 with open(financial_file) as f:
                     fin_data = json.load(f)
                 
-                # Create parameter objects with defaults (can be customized later)
-                cost_params = CostParameters()
-                fin_params = FinancialParameters()
+                # Create parameter objects using loaded data or defaults
+                # Cost parameters (in Crore INR)
+                cost_params = CostParameters(
+                    solar_capex_per_mw=3.2,      # Crore/MW AC
+                    wind_capex_per_mw=6.0,       # Crore/MW
+                    bess_power_capex_per_mw=1.5, # Crore/MW
+                    bess_energy_capex_per_mwh=2.0, # Crore/MWh
+                    solar_opex_per_mw_year=0.025,  # Crore/MW/year
+                    wind_opex_per_mw_year=0.045,   # Crore/MW/year
+                    bess_opex_per_mwh_year=0.010,  # Crore/MWh/year
+                    fixed_opex=5.0,  # Crore/year
+                    residual_value_fraction=0.0  # 0% residual value to match Excel
+                )
+                
+                # Financial parameters
+                fin_params = FinancialParameters(
+                    tax_rate=fin_data.get('tax_rate', 0.2782),
+                    discount_rate=fin_data.get('discount_rate', 0.075),
+                    interest_rate=fin_data.get('loan_interest_rate', 0.095),
+                    system_degradation=cfg.solar_degrad,
+                    opex_escalation=0.05,  # 5% annual OPEX escalation
+                    equity_fraction=fin_data.get('equity_percent', 0.3),
+                    loan_fraction=fin_data.get('loan_percent', 0.7),
+                    loan_term_years=int(fin_data.get('loan_term_years', 10)),
+                    depreciation_rate_early=0.04666666,  # 4.67% for years 1-15
+                    depreciation_rate_late=0.03,          # 3% for years 16+
+                    depreciation_switchover_year=15,
+                    project_lifetime_years=25
+                )
                 
                 # Calculate wind capacity in MW (assume 3.3 MW per WTG if not specified)
                 wind_capacity_per_wtg = default_config.get('wind_capacity_per_wtg', 3.3)
