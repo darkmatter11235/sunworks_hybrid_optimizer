@@ -943,7 +943,7 @@ with tab3:
             n_bess_e = int((bess_energy_opt_range[1] - bess_energy_opt_range[0]) / bess_energy_opt_step) + 1 if bess_opt_enabled else 1
             total_configs = n_solar * n_wind * n_bess_p * n_bess_e
             
-            st.success(f"**📊 Search Space:** {total_configs:,} configurations\n\n**⏱️ Est. Time:** {total_configs * 1.5 / 60:.1f} - {total_configs * 2.5 / 60:.1f} minutes")
+            st.success(f"**📊 Search Space:** {total_configs:,} configurations\n\n**⏱️ Est. Time:** {total_configs * 0.3 / 60:.1f} - {total_configs * 0.6 / 60:.1f} minutes")
             
             # Run button
             run_opt_button = st.button("🚀 Run Optimization", type="primary", use_container_width=True, disabled=st.session_state.optimization_running)
