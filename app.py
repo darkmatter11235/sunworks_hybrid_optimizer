@@ -12,8 +12,15 @@ import plotly.graph_objects as go
 import plotly.express as px
 import tempfile
 import io
+import time
+from dataclasses import asdict
 
 from hourly_sim_skeleton import Config, simulate_hourly, assign_tod
+from optimizer import (
+    OptimizationConfig, OptimizationResult,
+    generate_configurations, evaluate_configuration
+)
+from lcoe_calculator import CostParameters, FinancialParameters
 
 # Page config
 st.set_page_config(
@@ -28,6 +35,14 @@ if 'simulation_run' not in st.session_state:
     st.session_state.simulation_run = False
 if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = False
+if 'optimization_results' not in st.session_state:
+    st.session_state.optimization_results = None
+if 'optimization_running' not in st.session_state:
+    st.session_state.optimization_running = False
+if 'cfg' not in st.session_state:
+    st.session_state.cfg = None
+if 'df_profiles' not in st.session_state:
+    st.session_state.df_profiles = None
 
 # Title and intro
 st.title("⚡ Hybrid Renewable Energy System Optimizer")
@@ -303,6 +318,9 @@ with tab1:
                 'load_mw': df_load['load_mw'].values,
             })
             
+            # Store profiles in session state for optimization
+            st.session_state.df_profiles = df_profiles
+            
             # Run simulation for Year 1
             df_sim = simulate_hourly(cfg, df_profiles)
             
@@ -380,6 +398,12 @@ with tab1:
             except Exception as e:
                 lcoe = None
                 st.warning(f"Could not calculate LCOE: {e}")
+            
+            # Store parameters needed for optimization
+            st.session_state.project_lifetime_years_slider = project_lifetime_years
+            st.session_state.profiles_file = profiles_file
+            st.session_state.load_file = load_file
+            st.session_state.financial_file = financial_file
             
             # Store final results in session
             st.session_state.lcoe = lcoe
@@ -526,7 +550,7 @@ with tab2:
                     
                     **Key Financial Parameters:**
                     - **Project Cost**: ₹3,949.56 Crore
-                    - **Annual OPEX**: ₹46.48 Crore
+                    - **Annual OPEX**: ₹46.48 Crore (Year 1, escalates at 5%/year)
                     - **Project Lifetime**: {project_years} years
                     - **Discount Rate**: 7.50%
                     - **Tax Rate**: 27.82%
@@ -538,11 +562,170 @@ with tab2:
                     - **Lifetime Energy**: {total_lifetime_gwh:,.1f} GWh
                     - **Average Annual Energy**: {total_lifetime_gwh/project_years:.2f} GWh
                     
+                    ---
+                    
+                    **💡 How LCOE Changes with Project Lifetime:**
+                    
+                    Longer project lifetimes generally result in **lower LCOE** because:
+                    - Capital cost is spread over more energy delivered
+                    - However, degradation reduces later years' generation
+                    - OPEX escalation increases costs in later years
+                    - Discounting reduces value of distant cash flows
+                    
+                    *Try adjusting the "Project Lifetime" slider in the Configuration tab to see the impact!*
+                    
                     *LCOE represents the total lifecycle cost divided by total energy delivered, considering time value of money.*
                     """)
+                    
+                    # Show how LCOE varies with project lifetime
+                    st.markdown("#### 📊 LCOE Sensitivity to Project Lifetime")
+                    
+                    # Calculate LCOE for different project lifetimes
+                    from lcoe_calculator import (
+                        CostParameters, FinancialParameters,
+                        calculate_lcoe as calc_lcoe_func
+                    )
+                    
+                    test_years = [10, 15, 20, 25, 30]
+                    lcoe_values = []
+                    
+                    for test_year in test_years:
+                        test_fin_params = FinancialParameters(
+                            tax_rate=0.2782,
+                            discount_rate=0.0749997,
+                            interest_rate=0.095,
+                            system_degradation=cfg.solar_degrad,
+                            opex_escalation=0.05,
+                            equity_fraction=0.3,
+                            loan_fraction=0.7,
+                            loan_term_years=10,
+                            project_lifetime_years=test_year
+                        )
+                        
+                        test_annual_energy = np.full(test_year, year1_delivered * 1000)
+                        
+                        test_results = calc_lcoe_func(
+                            3949.56,  # project cost
+                            46.48,    # annual opex
+                            test_annual_energy,
+                            test_fin_params,
+                            CostParameters(residual_value_fraction=0.0)
+                        )
+                        lcoe_values.append(test_results['lcoe_inr_per_kwh'])
+                    
+                    fig_lcoe_sensitivity = go.Figure()
+                    fig_lcoe_sensitivity.add_trace(go.Scatter(
+                        x=test_years,
+                        y=lcoe_values,
+                        mode='lines+markers',
+                        name='LCOE',
+                        line=dict(color='#FF6B6B', width=3),
+                        marker=dict(size=10)
+                    ))
+                    
+                    # Highlight current selection
+                    current_lcoe_idx = test_years.index(project_years) if project_years in test_years else None
+                    if current_lcoe_idx is not None:
+                        fig_lcoe_sensitivity.add_trace(go.Scatter(
+                            x=[test_years[current_lcoe_idx]],
+                            y=[lcoe_values[current_lcoe_idx]],
+                            mode='markers',
+                            name='Current Selection',
+                            marker=dict(size=15, color='#4ECDC4', symbol='star')
+                        ))
+                    
+                    fig_lcoe_sensitivity.update_layout(
+                        title="How LCOE Changes with Project Lifetime",
+                        xaxis_title="Project Lifetime (Years)",
+                        yaxis_title="LCOE (₹/kWh)",
+                        hovermode='x unified',
+                        height=350
+                    )
+                    
+                    st.plotly_chart(fig_lcoe_sensitivity, width='stretch')
+                    
+                    st.caption("💡 **Key Insight**: Longer project lifetimes result in lower LCOE because the upfront capital cost is spread over more energy generation, even accounting for degradation.")
         
         # Charts
         st.subheader("📈 Visualizations")
+        
+        # LCOE Sensitivity Analysis
+        if lcoe and 'annual_energy_kwh' in st.session_state:
+            st.markdown("#### LCOE Sensitivity to Project Lifetime")
+            
+            # Calculate LCOE for different project lifetimes
+            from lcoe_calculator import (
+                CostParameters, FinancialParameters,
+                calculate_lcoe as calc_lcoe_func
+            )
+            
+            test_years = list(range(10, 31))
+            lcoe_values = []
+            
+            # Get financial params
+            with open(financial_file) as f:
+                fin_data = json.load(f)
+            
+            project_cost = fin_data.get('project_cost_crore', 3949.56)
+            annual_opex = fin_data.get('annual_opex_crore', 46.48)
+            cost_params = CostParameters(residual_value_fraction=0.0)
+            
+            for test_year in test_years:
+                fin_params = FinancialParameters(
+                    tax_rate=fin_data.get('tax_rate', 0.2782),
+                    discount_rate=fin_data.get('discount_rate', 0.0749997),
+                    interest_rate=fin_data.get('loan_interest_rate', 0.095),
+                    system_degradation=cfg.solar_degrad,
+                    opex_escalation=0.05,
+                    equity_fraction=fin_data.get('equity_percent', 0.3),
+                    loan_fraction=fin_data.get('loan_percent', 0.7),
+                    loan_term_years=int(fin_data.get('loan_term_years', 10)),
+                    depreciation_rate_early=0.04666666,
+                    depreciation_rate_late=0.03,
+                    depreciation_switchover_year=15,
+                    project_lifetime_years=test_year
+                )
+                
+                year1_energy_kwh = df_sim['delivered_total'].sum() * 1000
+                annual_energy_kwh = np.full(test_year, year1_energy_kwh)
+                
+                lcoe_results = calc_lcoe_func(project_cost, annual_opex, annual_energy_kwh, fin_params, cost_params)
+                lcoe_values.append(lcoe_results['lcoe_inr_per_kwh'])
+            
+            # Plot LCOE sensitivity
+            fig_lcoe_sens = go.Figure()
+            fig_lcoe_sens.add_trace(go.Scatter(
+                x=test_years,
+                y=lcoe_values,
+                mode='lines+markers',
+                name='LCOE',
+                line=dict(color='#2E86AB', width=3),
+                marker=dict(size=6)
+            ))
+            
+            # Highlight current project lifetime
+            current_idx = test_years.index(project_years) if project_years in test_years else None
+            if current_idx is not None:
+                fig_lcoe_sens.add_trace(go.Scatter(
+                    x=[project_years],
+                    y=[lcoe],
+                    mode='markers',
+                    name='Current Selection',
+                    marker=dict(size=15, color='red', symbol='star')
+                ))
+            
+            fig_lcoe_sens.update_layout(
+                title="LCOE vs Project Lifetime",
+                xaxis_title="Project Lifetime (Years)",
+                yaxis_title="LCOE (₹/kWh)",
+                hovermode='x unified',
+                height=400,
+                showlegend=True
+            )
+            st.plotly_chart(fig_lcoe_sens, width='stretch')
+            
+            st.caption(f"💡 Insight: Changing from 10 to 30 years changes LCOE from ₹{lcoe_values[0]:.4f} to ₹{lcoe_values[-1]:.4f} per kWh ({((lcoe_values[-1]/lcoe_values[0])-1)*100:+.1f}%)")
+        
         
         # Multi-year trends
         if 'annual_energy_kwh' in st.session_state:
@@ -652,69 +835,474 @@ with tab2:
 
 with tab3:
     st.header("🎯 Optimization")
-    st.markdown("Find the best configuration to minimize LCOE")
+    st.markdown("""
+    Find the best solar/wind/BESS configuration to **minimize LCOE** while meeting your load demand.
     
-    st.subheader("Search Space")
-    col1, col2 = st.columns(2)
+    **Optimization Logic:**
+    - **Fixed:** Load demand, evacuation limits, degradation rates (from simulation)
+    - **Variable:** Solar capacity, wind capacity, BESS sizing
+    - **Objective:** Minimize LCOE
+    - **Method:** Grid search across all combinations
+    """)
     
-    with col1:
-        solar_range = st.slider(
-            "Solar Capacity Range (MW)",
-            min_value=0,
-            max_value=2000,
-            value=(500, 1000),
-            step=50
-        )
-        solar_step = st.number_input("Solar Step (MW)", min_value=10, max_value=200, value=50)
-    
-    with col2:
-        wind_range = st.slider(
-            "Wind WTG Count Range",
-            min_value=0,
-            max_value=100,
-            value=(0, 20),
-            step=5
-        )
-        wind_step = st.number_input("Wind Step", min_value=1, max_value=10, value=5)
-    
-    bess_enabled = st.checkbox("Include BESS in optimization", value=True)
-    
-    if bess_enabled:
-        col3, col4 = st.columns(2)
-        with col3:
-            bess_power_range = st.slider(
-                "BESS Power Range (MW)",
+    if not st.session_state.data_loaded:
+        st.warning("⚠️ Please configure and run a simulation first to enable optimization")
+    else:
+        # Show fixed parameters from base simulation at the top
+        if st.session_state.cfg is not None:
+            with st.expander("🔒 **Fixed Parameters** (from your simulation)", expanded=True):
+                base_cfg = st.session_state.cfg
+                
+                col_fix1, col_fix2, col_fix3 = st.columns(3)
+                with col_fix1:
+                    st.metric("Load Demand", f"{base_cfg.total_load_mw:.0f} MW")
+                    st.metric("Contracted Demand", f"{base_cfg.contracted_demand_mw:.0f} MW")
+                with col_fix2:
+                    st.metric("Evacuation Limit", f"{base_cfg.evac_limit_mw:.0f} MW")
+                    st.metric("Project Lifetime", f"{st.session_state.get('project_lifetime_years_slider', 25)} years")
+                with col_fix3:
+                    st.metric("Solar Degradation", f"{base_cfg.solar_degrad*100:.2f}%/yr")
+                    st.metric("BESS Efficiency", f"{base_cfg.one_way_eff*100:.1f}%")
+                
+                st.caption("💡 **Optimization searches for the cheapest RE system configuration to meet this fixed load demand**")
+        else:
+            st.warning("⚠️ **Run a simulation first** to set the fixed parameters for optimization")
+            st.stop()
+        
+        st.markdown("---")
+        
+        col_left, col_right = st.columns([1, 1])
+        
+        with col_left:
+            st.subheader("🔍 Search Space")
+            
+            # Solar range
+            st.markdown("**☀️ Solar Capacity**")
+            solar_opt_range = st.slider(
+                "Range (MW AC)",
                 min_value=0,
-                max_value=200,
-                value=(25, 75),
-                step=5
+                max_value=2000,
+                value=(600, 1200),
+                step=50,
+                key="opt_solar_range"
             )
-        with col4:
-            bess_energy_range = st.slider(
-                "BESS Energy Range (MWh)",
+            solar_opt_step = st.number_input("Step (MW)", min_value=50, max_value=500, value=100, key="opt_solar_step")
+            
+            # Wind range
+            st.markdown("**🌬️ Wind Turbines**")
+            wind_opt_range = st.slider(
+                "WTG Count Range",
                 min_value=0,
-                max_value=500,
-                value=(100, 300),
-                step=25
+                max_value=150,
+                value=(0, 100),
+                step=10,
+                key="opt_wind_range"
             )
-    
-    max_configs = st.number_input(
-        "Max Configurations to Evaluate",
-        min_value=10,
-        max_value=10000,
-        value=100,
-        help="More configs = better optimization but slower"
-    )
-    
-    if st.button("🚀 Run Optimization", type="primary", width='stretch'):
-        st.warning("⚠️ Optimization feature coming soon! Use optimizer.py for now.")
-        st.code(f"""
-# Run optimization from command line:
-python optimizer.py \\
-    --solar-min {solar_range[0]} --solar-max {solar_range[1]} --solar-step {solar_step} \\
-    --wind-min {wind_range[0]} --wind-max {wind_range[1]} --wind-step {wind_step} \\
-    --output optimization_results.csv
-        """)
+            wind_opt_step = st.number_input("Step (WTG)", min_value=10, max_value=50, value=20, key="opt_wind_step")
+            
+            # BESS toggle and range
+            st.markdown("**🔋 Battery Storage**")
+            bess_opt_enabled = st.checkbox("Include BESS in optimization", value=True, key="opt_bess_enabled")
+            
+            if bess_opt_enabled:
+                bess_power_opt_range = st.slider(
+                    "Power Range (MW)",
+                    min_value=0,
+                    max_value=300,
+                    value=(0, 200),
+                    step=25,
+                    key="opt_bess_power_range"
+                )
+                bess_power_opt_step = st.number_input("Power Step (MW)", min_value=25, max_value=100, value=50, key="opt_bess_power_step")
+                
+                bess_energy_opt_range = st.slider(
+                    "Energy Range (MWh)",
+                    min_value=0,
+                    max_value=1000,
+                    value=(0, 800),
+                    step=50,
+                    key="opt_bess_energy_range"
+                )
+                bess_energy_opt_step = st.number_input("Energy Step (MWh)", min_value=50, max_value=400, value=200, key="opt_bess_energy_step")
+            else:
+                bess_power_opt_range = (0, 0)
+                bess_power_opt_step = 1
+                bess_energy_opt_range = (0, 0)
+                bess_energy_opt_step = 1
+            
+            # Constraints
+            st.markdown("**⚙️ Performance Constraints**")
+            min_captive = st.slider("Min Captive Supply (%)", 0, 100, 0, 5, key="opt_min_captive")
+            max_grid_import = st.slider("Max Grid Import (%)", 0, 100, 100, 5, key="opt_max_grid_import")
+            
+            # Calculate number of configurations
+            st.markdown("---")
+            n_solar = int((solar_opt_range[1] - solar_opt_range[0]) / solar_opt_step) + 1
+            n_wind = int((wind_opt_range[1] - wind_opt_range[0]) / wind_opt_step) + 1
+            n_bess_p = int((bess_power_opt_range[1] - bess_power_opt_range[0]) / bess_power_opt_step) + 1 if bess_opt_enabled else 1
+            n_bess_e = int((bess_energy_opt_range[1] - bess_energy_opt_range[0]) / bess_energy_opt_step) + 1 if bess_opt_enabled else 1
+            total_configs = n_solar * n_wind * n_bess_p * n_bess_e
+            
+            st.success(f"**📊 Search Space:** {total_configs:,} configurations\n\n**⏱️ Est. Time:** {total_configs * 1.5 / 60:.1f} - {total_configs * 2.5 / 60:.1f} minutes")
+            
+            # Run button
+            run_opt_button = st.button("🚀 Run Optimization", type="primary", use_container_width=True, disabled=st.session_state.optimization_running)
+        
+        with col_right:
+            st.subheader("📊 Results")
+            
+            # Show results if available
+            if st.session_state.optimization_results is not None:
+                results_df = st.session_state.optimization_results
+                
+                # Calculate feasibility statistics
+                n_feasible = results_df['is_feasible'].sum()
+                n_infeasible = (~results_df['is_feasible']).sum()
+                n_total = len(results_df)
+                
+                # Get best overall and best feasible
+                best_overall = results_df.iloc[0]
+                feasible_results = results_df[results_df['is_feasible']]
+                
+                if len(feasible_results) > 0:
+                    best_feasible = feasible_results.iloc[0]
+                    best_result = best_feasible
+                    all_good = True
+                else:
+                    best_result = best_overall
+                    all_good = False
+                
+                # Feasibility summary
+                st.markdown("### 📊 Optimization Summary")
+                col_s1, col_s2, col_s3 = st.columns(3)
+                with col_s1:
+                    st.metric("Total Evaluated", f"{n_total:,}")
+                with col_s2:
+                    st.metric("✅ Feasible", f"{n_feasible:,}", delta=f"{n_feasible/n_total*100:.1f}%" if n_total > 0 else "0%")
+                with col_s3:
+                    st.metric("❌ Infeasible", f"{n_infeasible:,}", delta=f"{n_infeasible/n_total*100:.1f}%" if n_total > 0 else "0%", delta_color="inverse")
+                
+                # Warning if no feasible solutions
+                if not all_good:
+                    st.error("⚠️ **No feasible solutions found!** Showing best result but it violates constraints.")
+                    if len(best_result.get('constraint_violations', [])) > 0:
+                        st.warning(f"**Violations:** {', '.join(best_result['constraint_violations'])}")
+                    st.info("💡 **Suggestions:** Relax constraints, expand search range, or increase system capacity.")
+                else:
+                    st.success(f"✅ Found {n_feasible:,} feasible solution(s)!")
+                
+                st.markdown("---")
+                
+                with st.container():
+                    st.markdown("### 🏆 Best Configuration")
+                    
+                    # Metrics in columns
+                    m1, m2, m3 = st.columns(3)
+                    with m1:
+                        st.metric("LCOE", f"₹{best_result['lcoe_inr_per_kwh']:.4f}/kWh")
+                    with m2:
+                        st.metric("Project Cost", f"₹{best_result['project_cost_crore']:.0f} Cr")
+                    with m3:
+                        st.metric("Annual OPEX", f"₹{best_result['annual_opex_crore']:.1f} Cr")
+                    
+                    # Configuration details
+                    st.markdown("**System Configuration:**")
+                    st.write(f"- Solar: **{best_result['solar_ac_mw']:.0f} MW**")
+                    st.write(f"- Wind: **{best_result['wind_wtg_count']:.0f} WTG** ({best_result['wind_mw']:.0f} MW)")
+                    st.write(f"- BESS: **{best_result['bess_power_mw']:.0f} MW / {best_result['bess_energy_mwh']:.0f} MWh**")
+                    st.write(f"- Total Capacity: **{best_result['solar_ac_mw'] + best_result['wind_mw']:.0f} MW**")
+                    
+                    st.markdown("**Performance:**")
+                    captive_icon = "✅" if best_result['is_feasible'] else "❌"
+                    st.write(f"- Captive Supply: **{best_result['captive_percent']:.1f}%** {captive_icon}")
+                    st.write(f"- Grid Import: **{best_result['grid_import_percent']:.1f}%**")
+                    st.write(f"- CUF: **{best_result['cuf_percent']:.1f}%**")
+                    st.write(f"- Curtailment: **{best_result['curtailment_gwh']:.1f} GWh/yr**")
+                    
+                    # Show feasibility status
+                    if best_result['is_feasible']:
+                        st.success("✅ **Status: FEASIBLE** - Meets all constraints")
+                    else:
+                        st.error("❌ **Status: INFEASIBLE** - Violates constraints")
+                        if len(best_result.get('constraint_violations', [])) > 0:
+                            for violation in best_result['constraint_violations']:
+                                st.caption(f"  • {violation}")
+                
+                # Action buttons
+                st.markdown("---")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    # Download best config as JSON
+                    best_config_json = {
+                        "solar_ac_mw": float(best_result['solar_ac_mw']),
+                        "wind_wtg_count": int(best_result['wind_wtg_count']),
+                        "bess_power_mw": float(best_result['bess_power_mw']),
+                        "bess_energy_mwh": float(best_result['bess_energy_mwh'])
+                    }
+                    st.download_button(
+                        "📥 Download Best Config",
+                        data=json.dumps(best_config_json, indent=2),
+                        file_name="best_config.json",
+                        mime="application/json",
+                        use_container_width=True
+                    )
+                with col_b:
+                    # Download all results CSV
+                    csv_buffer = io.StringIO()
+                    results_df.to_csv(csv_buffer, index=False)
+                    st.download_button(
+                        "📊 Download All Results",
+                        data=csv_buffer.getvalue(),
+                        file_name="optimization_results.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                
+                # Top 10 results table with tabs for all vs feasible
+                st.markdown("### 📈 Top Configurations")
+                
+                tab_all, tab_feasible = st.tabs(["All Results", f"Feasible Only ({n_feasible})"])
+                
+                with tab_all:
+                    top_10_all = results_df.head(10)[['solar_ac_mw', 'wind_wtg_count', 'bess_power_mw', 'bess_energy_mwh', 
+                                                   'lcoe_inr_per_kwh', 'captive_percent', 'grid_import_percent', 'is_feasible']].copy()
+                    top_10_all.columns = ['Solar (MW)', 'Wind (WTG)', 'BESS Power (MW)', 'BESS Energy (MWh)', 
+                                      'LCOE (₹/kWh)', 'Captive %', 'Grid %', 'Feasible']
+                    
+                    # Add visual indicator
+                    def highlight_feasible(row):
+                        if row['Feasible']:
+                            return ['background-color: #d4edda'] * len(row)
+                        else:
+                            return ['background-color: #f8d7da'] * len(row)
+                    
+                    styled_df = top_10_all.style.apply(highlight_feasible, axis=1)
+                    st.dataframe(styled_df, use_container_width=True, height=400)
+                    st.caption("🟢 Green = Feasible | 🔴 Red = Infeasible (violates constraints)")
+                
+                with tab_feasible:
+                    if len(feasible_results) > 0:
+                        top_10_feasible = feasible_results.head(10)[['solar_ac_mw', 'wind_wtg_count', 'bess_power_mw', 'bess_energy_mwh', 
+                                                       'lcoe_inr_per_kwh', 'captive_percent', 'grid_import_percent']].copy()
+                        top_10_feasible.columns = ['Solar (MW)', 'Wind (WTG)', 'BESS Power (MW)', 'BESS Energy (MWh)', 
+                                              'LCOE (₹/kWh)', 'Captive %', 'Grid %']
+                        st.dataframe(top_10_feasible, use_container_width=True, height=400)
+                    else:
+                        st.warning("No feasible configurations found. Adjust constraints or search space.")
+                
+            elif st.session_state.optimization_running:
+                st.info("⏳ Optimization in progress... This may take several minutes.")
+            else:
+                st.info("Configure search space and click 'Run Optimization' to find the best configuration")
+        
+        # Run optimization when button clicked
+        if run_opt_button:
+            if st.session_state.cfg is None or st.session_state.df_profiles is None:
+                st.error("❌ Please run a simulation first before optimizing!")
+                st.stop()
+                
+            st.session_state.optimization_running = True
+            
+            # Get base configuration from session state
+            base_cfg = st.session_state.cfg
+            
+            # Build optimization config
+            opt_config = OptimizationConfig(
+                solar_ac_mw_min=float(solar_opt_range[0]),
+                solar_ac_mw_max=float(solar_opt_range[1]),
+                solar_ac_mw_step=float(solar_opt_step),
+                wind_wtg_count_min=int(wind_opt_range[0]),
+                wind_wtg_count_max=int(wind_opt_range[1]),
+                wind_wtg_count_step=int(wind_opt_step),
+                wind_wtg_capacity_mw=3.3,
+                bess_power_mw_min=float(bess_power_opt_range[0]),
+                bess_power_mw_max=float(bess_power_opt_range[1]),
+                bess_power_mw_step=float(bess_power_opt_step),
+                bess_energy_mwh_min=float(bess_energy_opt_range[0]),
+                bess_energy_mwh_max=float(bess_energy_opt_range[1]),
+                bess_energy_mwh_step=float(bess_energy_opt_step),
+                max_evacuation_limit_mw=base_cfg.evac_limit_mw,
+                min_captive_percent=float(min_captive),
+                max_grid_import_percent=float(max_grid_import),
+                bess_mode=base_cfg.bess_mode
+            )
+            
+            # Generate configurations
+            with st.spinner("Generating configurations..."):
+                configurations = generate_configurations(opt_config)
+            
+            st.info(f"Evaluating {len(configurations)} configurations...")
+            
+            # Create progress tracking
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # Load financial parameters
+            with open(st.session_state.financial_file) as f:
+                fin_data = json.load(f)
+            
+            # Cost and financial params
+            cost_params = CostParameters(residual_value_fraction=0.0)
+            fin_params = FinancialParameters(
+                project_lifetime_years=st.session_state.project_lifetime_years_slider,
+                system_degradation=base_cfg.solar_degrad,
+                discount_rate=fin_data.get('discount_rate', 0.0749997),
+                tax_rate=fin_data.get('tax_rate', 0.2782),
+                interest_rate=fin_data.get('loan_interest_rate', 0.095),
+                opex_escalation=0.05,
+                equity_fraction=fin_data.get('equity_percent', 0.3),
+                loan_fraction=fin_data.get('loan_percent', 0.7),
+                loan_term_years=int(fin_data.get('loan_term_years', 10))
+            )
+            
+            # Base config from current simulation
+            base_config = base_cfg
+            df_profiles = st.session_state.df_profiles
+            
+            # Define evaluation function that uses stored profiles
+            def evaluate_config_streamlit(solar, wind, bess_p, bess_e):
+                """Evaluate a configuration using stored profile data."""
+                from banking_settlement_skeleton import SettlementConfig, settle
+                from lcoe_calculator import calculate_project_cost, calculate_annual_opex
+                
+                # Create config for this evaluation
+                eval_cfg = Config(
+                    year=base_config.year,
+                    total_load_mw=base_config.total_load_mw,
+                    existing_solar_mwp=base_config.existing_solar_mwp,
+                    contracted_demand_mw=base_config.contracted_demand_mw,
+                    evac_limit_mw=opt_config.max_evacuation_limit_mw,
+                    tl_loss=base_config.tl_loss,
+                    wheeling_loss=base_config.wheeling_loss,
+                    dc_ac_ratio=base_config.dc_ac_ratio,
+                    solar_ac_mw=solar,
+                    wind_wtg_count=wind,
+                    wind_expected_cuf=base_config.wind_expected_cuf,
+                    wind_reference_cuf=base_config.wind_reference_cuf,
+                    solar_degrad=base_config.solar_degrad,
+                    wind_degrad=base_config.wind_degrad,
+                    p_multiplier=base_config.p_multiplier,
+                    banking_enabled=base_config.banking_enabled,
+                    bess_mode=opt_config.bess_mode,
+                    one_way_eff=base_config.one_way_eff,
+                    bess_power_mw=bess_p,
+                    bess_energy_mwh=bess_e,
+                    soc_start_gwh=base_config.soc_start_gwh,
+                )
+                
+                # Run hourly simulation
+                df_hourly = simulate_hourly(eval_cfg, df_profiles)
+                
+                # Run settlement
+                scfg = SettlementConfig()
+                settlement_results = settle(df_hourly, scfg)
+                
+                # Calculate metrics
+                annual_generation = df_hourly["gen_total"].sum() / 1e6  # GWh
+                annual_load = df_hourly["net_load"].sum() / 1e6  # GWh
+                captive_supply = (df_hourly["delivered_total"].sum() + settlement_results["annual_summary"]["total_banked_used"]) / 1e6
+                grid_import = df_hourly["from_grid"].sum() / 1e6
+                curtailment = df_hourly["curtailed"].sum() / 1e6
+                
+                captive_percent = (captive_supply / annual_load * 100) if annual_load > 0 else 0
+                grid_import_percent = (grid_import / annual_load * 100) if annual_load > 0 else 0
+                
+                wind_mw = wind * 3.3
+                total_capacity = solar + wind_mw
+                cuf_percent = (annual_generation * 1e6 / (total_capacity * 8760)) * 100 if total_capacity > 0 else 0
+                
+                # Check constraints
+                violations = []
+                is_feasible = True
+                
+                if captive_percent < opt_config.min_captive_percent:
+                    violations.append(f"Captive {captive_percent:.1f}% < {opt_config.min_captive_percent:.1f}%")
+                    is_feasible = False
+                
+                if grid_import_percent > opt_config.max_grid_import_percent:
+                    violations.append(f"Grid import {grid_import_percent:.1f}% > {opt_config.max_grid_import_percent:.1f}%")
+                    is_feasible = False
+                
+                # Calculate costs
+                project_cost = calculate_project_cost(solar, wind_mw, bess_p, bess_e, cost_params)
+                annual_opex = calculate_annual_opex(solar, wind_mw, bess_e, cost_params)
+                
+                # Energy delivered over project lifetime
+                first_year_energy_kwh = captive_supply * 1e9  # GWh to kWh
+                annual_energy_array = np.full(fin_params.project_lifetime_years, first_year_energy_kwh)
+                
+                # Calculate LCOE
+                from lcoe_calculator import calculate_lcoe as calc_lcoe
+                lcoe_results = calc_lcoe(project_cost, annual_opex, annual_energy_array, fin_params, cost_params)
+                
+                return {
+                    'solar_ac_mw': solar,
+                    'wind_wtg_count': int(wind),
+                    'wind_mw': wind_mw,
+                    'bess_power_mw': bess_p,
+                    'bess_energy_mwh': bess_e,
+                    'lcoe_inr_per_kwh': lcoe_results['lcoe_inr_per_kwh'],
+                    'project_cost_crore': project_cost,
+                    'annual_opex_crore': annual_opex,
+                    'annual_generation_gwh': annual_generation,
+                    'annual_load_gwh': annual_load,
+                    'captive_supply_gwh': captive_supply,
+                    'grid_import_gwh': grid_import,
+                    'curtailment_gwh': curtailment,
+                    'captive_percent': captive_percent,
+                    'grid_import_percent': grid_import_percent,
+                    'cuf_percent': cuf_percent,
+                    'is_feasible': is_feasible,
+                    'constraint_violations': violations,
+                }
+            
+            # Run evaluations
+            results = []
+            start_time = time.time()
+            n_feasible_so_far = 0
+            
+            for i, (solar, wind, bess_p, bess_e) in enumerate(configurations):
+                try:
+                    # Evaluate using stored profiles
+                    result = evaluate_config_streamlit(solar, wind, bess_p, bess_e)
+                    results.append(result)
+                    
+                    if result['is_feasible']:
+                        n_feasible_so_far += 1
+                    
+                    # Update progress
+                    progress = (i + 1) / len(configurations)
+                    progress_bar.progress(progress)
+                    
+                    if (i + 1) % 10 == 0:
+                        elapsed = time.time() - start_time
+                        remaining = (elapsed / (i + 1)) * (len(configurations) - i - 1)
+                        status_text.text(f"Evaluated {i+1}/{len(configurations)} | Feasible: {n_feasible_so_far} | Elapsed: {elapsed/60:.1f}m | Remaining: {remaining/60:.1f}m")
+                except Exception as e:
+                    st.warning(f"Config {i+1} failed: {e}")
+                    continue
+            
+            # Convert to DataFrame and sort by LCOE
+            df_results = pd.DataFrame(results)
+            df_results = df_results.sort_values('lcoe_inr_per_kwh').reset_index(drop=True)
+            
+            # Calculate summary statistics
+            n_feasible_final = df_results['is_feasible'].sum()
+            n_total_final = len(df_results)
+            
+            # Store in session state
+            st.session_state.optimization_results = df_results
+            st.session_state.optimization_running = False
+            
+            elapsed_total = time.time() - start_time
+            
+            # Show completion message with statistics
+            if n_feasible_final > 0:
+                st.success(f"✅ Optimization complete in {elapsed_total/60:.1f} minutes! Found {n_feasible_final}/{n_total_final} feasible solutions.")
+            else:
+                st.warning(f"⚠️ Optimization complete in {elapsed_total/60:.1f} minutes. No feasible solutions found among {n_total_final} configurations.")
+            
+            st.rerun()
 
 # Footer
 st.sidebar.markdown("---")
