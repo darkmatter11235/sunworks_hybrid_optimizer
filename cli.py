@@ -8,11 +8,12 @@ import argparse
 import json
 import sys
 from pathlib import Path
+import numpy as np
 import pandas as pd
 
 from hourly_sim_skeleton import Config, simulate_hourly, assign_tod, load_profiles_from_workbook
 from lcoe_calculator import calculate_lcoe
-from optimizer import optimize_system
+from optimizer import optimize
 
 def cmd_simulate(args):
     """Run a single simulation"""
@@ -56,7 +57,37 @@ def cmd_simulate(args):
     financial_file = data_dir / "financial_params.json"
     if financial_file.exists():
         try:
-            lcoe = calculate_lcoe(cfg, df_sim, str(financial_file))
+            from lcoe_calculator import (FinancialParameters, CostParameters,
+                                         calculate_project_cost, calculate_annual_opex)
+            with open(financial_file) as fp:
+                fin_data = json.load(fp)
+
+            fin_params = FinancialParameters(
+                tax_rate=fin_data.get('tax_rate', 0.2782),
+                discount_rate=fin_data.get('discount_rate', 0.0749997),
+                interest_rate=fin_data.get('loan_interest_rate', 0.095),
+                equity_fraction=fin_data.get('equity_percent', 0.30),
+                loan_fraction=fin_data.get('loan_percent', 0.70),
+                loan_term_years=fin_data.get('loan_term_years', 10),
+                project_lifetime_years=fin_data.get('project_life_years', 25),
+                system_degradation=cfg.solar_degrad,
+            )
+            cost_params = CostParameters()
+
+            wind_mw = cfg.wind_wtg_count * getattr(cfg, 'wind_capacity_per_wtg', 3.3)
+            project_cost = fin_data.get('project_cost_crore') or calculate_project_cost(
+                cfg.solar_ac_mw, wind_mw, cfg.bess_power_mw, cfg.bess_energy_mwh, cost_params)
+            annual_opex = fin_data.get('annual_opex_crore') or calculate_annual_opex(
+                cfg.solar_ac_mw, wind_mw, cfg.bess_energy_mwh, cost_params)
+
+            # Build annual energy array with degradation (kWh per year)
+            base_kwh = df_sim['delivered_total'].sum() * 1000.0
+            n_years = fin_params.project_lifetime_years
+            annual_energy_kwh = base_kwh * (1 - fin_params.system_degradation) ** np.arange(n_years)
+
+            result = calculate_lcoe(project_cost, annual_opex, annual_energy_kwh,
+                                    fin_params, cost_params)
+            lcoe = result['lcoe_inr_per_kwh']
             print(f"\nLCOE: ₹{lcoe:.4f}/kWh")
         except Exception as e:
             print(f"Warning: Could not calculate LCOE: {e}")
@@ -120,9 +151,9 @@ def cmd_optimize(args):
     
     # Call optimizer
     try:
-        from optimizer import optimize_system
+        from optimizer import optimize
         
-        results = optimize_system(
+        results = optimize(
             base_config=config_data,
             data_dir=args.data_dir,
             solar_range=(args.solar_min, args.solar_max, args.solar_step),
