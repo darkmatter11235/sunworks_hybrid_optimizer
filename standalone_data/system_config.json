@@ -8,7 +8,7 @@
   "dc_ac_ratio": 1.45,
   "solar_ac_mw": 830.0,
   "solar_degrad": 0.005,
-  "wind_wtg_count": 0,
+  "wind_wtg_count": 25,
   "wind_capacity_per_wtg": 0.0,
   "wind_expected_cuf": 0.32,
   "wind_reference_cuf": 0.355587,
