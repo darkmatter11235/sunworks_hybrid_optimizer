@@ -158,7 +158,8 @@ def simulate_hourly(cfg: Config, df: pd.DataFrame) -> pd.DataFrame:
     else:
         df["load_total"] = cfg.total_load_mw
     
-    df["existing_solar"] = (cfg.existing_solar_mwp / cfg.dc_ac_ratio) * df["solar_mwh_per_mw"] * degr_s
+    dc_ac = df["dc_ac_ratio"].values if "dc_ac_ratio" in df.columns else cfg.dc_ac_ratio
+    df["existing_solar"] = (cfg.existing_solar_mwp / dc_ac) * df["solar_mwh_per_mw"] * degr_s
     df["net_load"] = df["load_total"] - df["existing_solar"]
 
     df["solar_gen"] = cfg.solar_ac_mw * df["solar_mwh_per_mw"] * degr_s

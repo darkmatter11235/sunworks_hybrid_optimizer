@@ -40,7 +40,7 @@ def cmd_simulate(args):
     dt = pd.date_range('2024-01-01', periods=8760, freq='h')
     hour = df_gen['hour_of_day'].values if 'hour_of_day' in df_gen.columns else dt.hour.to_numpy()
     
-    df_profiles = pd.DataFrame({
+    profiles_dict = {
         'dt': dt,
         'month': dt.month.to_numpy(),
         'day': dt.day.to_numpy(),
@@ -49,7 +49,10 @@ def cmd_simulate(args):
         'solar_mwh_per_mw': df_gen['solar_kwh_per_mw'].values / 1000.0,
         'wind_mwh_per_wtg': df_gen['wind_kwh_per_wtg'].values / 1000.0,
         'load_mw': df_load['load_mw'].values,
-    })
+    }
+    if 'dc_ac_ratio' in df_gen.columns:
+        profiles_dict['dc_ac_ratio'] = df_gen['dc_ac_ratio'].values
+    df_profiles = pd.DataFrame(profiles_dict)
     
     print("Running simulation...")
     df_sim = simulate_hourly(cfg, df_profiles)
