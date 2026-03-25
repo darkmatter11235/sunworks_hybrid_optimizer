@@ -33,7 +33,8 @@ def cmd_simulate(args):
     
     # Load profiles
     data_dir = Path(args.data_dir)
-    df_gen = pd.read_csv(data_dir / "generation_profiles.csv")
+    gen_profile_path = Path(args.generation_profile) if args.generation_profile else data_dir / "generation_profiles.csv"
+    df_gen = pd.read_csv(gen_profile_path)
     df_load = pd.read_csv(data_dir / "load_profile.csv")
     
     dt = pd.date_range('2024-01-01', periods=8760, freq='h')
@@ -193,7 +194,10 @@ Examples:
   
   # Run simulation
   python cli.py simulate --config standalone_data/system_config.json
-  
+
+  # Run simulation with a custom generation profile CSV
+  python cli.py simulate --config my_config.json --generation-profile my_profiles.csv
+
   # Run simulation with output
   python cli.py simulate --config my_config.json --output results.csv --summary summary.json
   
@@ -211,6 +215,7 @@ Examples:
     sim_parser = subparsers.add_parser('simulate', help='Run a single simulation')
     sim_parser.add_argument('--config', required=True, help='Configuration JSON file')
     sim_parser.add_argument('--data-dir', default='standalone_data', help='Directory with profile data')
+    sim_parser.add_argument('--generation-profile', help='Path to generation profiles CSV (overrides --data-dir lookup)')
     sim_parser.add_argument('--output', help='Output CSV file for detailed results')
     sim_parser.add_argument('--summary', help='Output JSON file for summary')
     
@@ -218,6 +223,7 @@ Examples:
     opt_parser = subparsers.add_parser('optimize', help='Run optimization')
     opt_parser.add_argument('--config', required=True, help='Base configuration JSON file')
     opt_parser.add_argument('--data-dir', default='standalone_data', help='Directory with profile data')
+    opt_parser.add_argument('--generation-profile', help='Path to generation profiles CSV (overrides --data-dir lookup)')
     opt_parser.add_argument('--output', required=True, help='Output CSV file for results')
     opt_parser.add_argument('--solar-min', type=float, default=0, help='Min solar capacity (MW)')
     opt_parser.add_argument('--solar-max', type=float, default=1000, help='Max solar capacity (MW)')
