@@ -180,6 +180,8 @@ python utils/generation_profiles_template.py create-template \
 This creates an Excel workbook with:
 
 - `meta` sheet: format notes
+- `instructions` sheet: step-by-step data filling guidance
+- `plant_info` sheet: plant/site metadata (name, place, latitude, longitude)
 - `hourly_profiles` sheet: 8760 hourly rows with required columns
 
 Required base columns in `hourly_profiles`:
@@ -208,6 +210,10 @@ This writes one CSV per ratio, such as:
 - `generation_profiles_dcac_1_45.csv`
 
 And it also writes `generation_profiles.csv` as a default compatibility file.
+
+If `plant_info` is filled, conversion also writes:
+
+- `plant_location.json` (place name, latitude, longitude, and optional fields)
 
 The simulator now auto-selects the right profile file based on `dc_ac_ratio` from your config.
 

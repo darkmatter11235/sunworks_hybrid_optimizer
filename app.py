@@ -46,6 +46,8 @@ if 'cfg' not in st.session_state:
     st.session_state.cfg = None
 if 'df_profiles' not in st.session_state:
     st.session_state.df_profiles = None
+if 'plant_location' not in st.session_state:
+    st.session_state.plant_location = None
 
 # Title and intro
 st.title("⚡ Hybrid Renewable Energy System Optimizer")
@@ -82,6 +84,12 @@ if data_source == "Use Demo Data":
         st.sidebar.markdown("**Deployment Note**: Include `standalone_data/` in your repository for demo mode.")
         st.stop()
     
+    loc_file = data_path / "plant_location.json"
+    if loc_file.exists():
+        with open(loc_file) as _lf:
+            st.session_state.plant_location = json.load(_lf)
+    else:
+        st.session_state.plant_location = None
     st.session_state.data_loaded = True
 
 elif data_source == "Upload Excel File":
@@ -179,6 +187,13 @@ elif data_source == "Upload Excel File":
                 load_file = data_path / "load_profile.csv"
                 financial_file = data_path / "financial_params.json"
 
+                loc_file = data_path / "plant_location.json"
+                if loc_file.exists():
+                    with open(loc_file) as _lf:
+                        st.session_state.plant_location = json.load(_lf)
+                else:
+                    st.session_state.plant_location = None
+
                 files_exist = True
                 st.sidebar.success("✅ Template converted successfully!")
                 st.session_state.data_loaded = True
@@ -223,6 +238,12 @@ else:  # Use Local Files
         st.stop()
     else:
         st.sidebar.success("✓ Data files loaded")
+        loc_file = data_path / "plant_location.json"
+        if loc_file.exists():
+            with open(loc_file) as _lf:
+                st.session_state.plant_location = json.load(_lf)
+        else:
+            st.session_state.plant_location = None
         st.session_state.data_loaded = True
 
 # Load default configuration
@@ -234,7 +255,25 @@ tab1, tab2, tab3 = st.tabs(["🔧 Configuration", "📊 Simulation Results", "�
 
 with tab1:
     st.header("System Configuration")
-    
+
+    _loc = st.session_state.get("plant_location")
+    if _loc:
+        _name = _loc.get("plant_name") or _loc.get("place_name", "")
+        _place = _loc.get("place_name", "")
+        _lat = _loc.get("latitude", "")
+        _lon = _loc.get("longitude", "")
+        _region = _loc.get("state_or_region", "")
+        _country = _loc.get("country", "")
+        _location_parts = [p for p in [_place, _region, _country] if p]
+        _location_str = ", ".join(str(p) for p in _location_parts) if _location_parts else "—"
+        _coords_str = f"{_lat}° N, {_lon}° E" if _lat and _lon else "—"
+        with st.container(border=True):
+            st.markdown(f"**📍 Plant: {_name}**")
+            loc_c1, loc_c2 = st.columns(2)
+            loc_c1.markdown(f"**Location:** {_location_str}")
+            loc_c2.markdown(f"**Coordinates:** {_coords_str}")
+        st.divider()
+
     col1, col2, col3 = st.columns(3)
     
     with col1:
