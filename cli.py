@@ -14,6 +14,7 @@ import pandas as pd
 from hourly_sim_skeleton import Config, simulate_hourly, assign_tod, load_profiles_from_workbook
 from lcoe_calculator import calculate_lcoe
 from optimizer import optimize
+from profile_selector import select_generation_profile_file
 
 def cmd_simulate(args):
     """Run a single simulation"""
@@ -33,7 +34,13 @@ def cmd_simulate(args):
     
     # Load profiles
     data_dir = Path(args.data_dir)
-    gen_profile_path = Path(args.generation_profile) if args.generation_profile else data_dir / "generation_profiles.csv"
+    explicit_profile = Path(args.generation_profile) if args.generation_profile else None
+    gen_profile_path = select_generation_profile_file(
+        data_dir=data_dir,
+        dc_ac_ratio=cfg.dc_ac_ratio,
+        explicit_profile=explicit_profile,
+    )
+    print(f"Using generation profile: {gen_profile_path}")
     df_gen = pd.read_csv(gen_profile_path)
     df_load = pd.read_csv(data_dir / "load_profile.csv")
     

@@ -21,6 +21,7 @@ from optimizer import (
     generate_configurations, evaluate_configuration
 )
 from lcoe_calculator import CostParameters, FinancialParameters
+from profile_selector import select_generation_profile_file
 
 # Page config
 st.set_page_config(
@@ -67,11 +68,12 @@ if data_source == "Use Demo Data":
     # Check if demo data exists locally
     demo_path = Path("standalone_data")
     if demo_path.exists():
+        data_path = demo_path
         config_file = demo_path / "system_config.json"
-        profiles_file = demo_path / "generation_profiles.csv"
         load_file = demo_path / "load_profile.csv"
         financial_file = demo_path / "financial_params.json"
-        files_exist = all([f.exists() for f in [config_file, profiles_file, load_file, financial_file]])
+        generation_profile_files = list(data_path.glob("generation_profiles*.csv"))
+        files_exist = all([f.exists() for f in [config_file, load_file, financial_file]]) and bool(generation_profile_files)
     
     if not files_exist:
         st.warning("⚠️ Demo data not available. Please upload an Excel file or use local files.")
@@ -105,7 +107,6 @@ elif data_source == "Upload Excel File":
                 # Update paths
                 data_path = Path(extract_dir)
                 config_file = data_path / "system_config.json"
-                profiles_file = data_path / "generation_profiles.csv"
                 load_file = data_path / "load_profile.csv"
                 financial_file = data_path / "financial_params.json"
                 
@@ -132,18 +133,18 @@ else:  # Use Local Files
     data_dir = st.sidebar.text_input("Data Directory", "standalone_data")
     data_path = Path(data_dir)
     config_file = data_path / "system_config.json"
-    profiles_file = data_path / "generation_profiles.csv"
     load_file = data_path / "load_profile.csv"
     financial_file = data_path / "financial_params.json"
+    generation_profile_files = list(data_path.glob("generation_profiles*.csv"))
     
-    files_exist = all([f.exists() for f in [config_file, profiles_file, load_file, financial_file]])
+    files_exist = all([f.exists() for f in [config_file, load_file, financial_file]]) and bool(generation_profile_files)
     
     if not files_exist:
         st.sidebar.error("⚠️ Data files not found!")
         st.sidebar.markdown(f"""
         Required files in `{data_dir}`:
         - system_config.json
-        - generation_profiles.csv
+        - generation_profiles*.csv
         - load_profile.csv
         - financial_params.json
         
@@ -301,6 +302,7 @@ with tab1:
             cfg = Config(**filtered_default)
             
             # Load profiles
+            profiles_file = select_generation_profile_file(data_path, cfg.dc_ac_ratio)
             df_gen = pd.read_csv(profiles_file)
             df_load = pd.read_csv(load_file)
             
