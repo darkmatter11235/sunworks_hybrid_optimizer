@@ -1,0 +1,58 @@
+{
+  "locations": [
+    {
+      "name": "Kodimi",
+      "latitude": 14.732766,
+      "longitude": 77.54311,
+      "profiles": {
+        "1.4": "generation_profiles.csv",
+        "1.45": "generation_profiles_2.csv"
+      }
+    },
+    {
+      "name": "Anantapur",
+      "latitude": 14.6819,
+      "longitude": 77.6006,
+      "profiles": {
+        "1.4": "generation_profiles_anantapur_dcac_1_4.csv",
+        "1.45": "generation_profiles_anantapur_dcac_1_45.csv"
+      }
+    },
+    {
+      "name": "Jodhpur",
+      "latitude": 26.2389,
+      "longitude": 73.0243,
+      "profiles": {
+        "1.4": "generation_profiles_jodhpur_dcac_1_4.csv",
+        "1.45": "generation_profiles_jodhpur_dcac_1_45.csv"
+      }
+    },
+    {
+      "name": "Kutch",
+      "latitude": 23.7337,
+      "longitude": 69.8597,
+      "profiles": {
+        "1.4": "generation_profiles_kutch_dcac_1_4.csv",
+        "1.45": "generation_profiles_kutch_dcac_1_45.csv"
+      }
+    },
+    {
+      "name": "Coimbatore",
+      "latitude": 11.0168,
+      "longitude": 76.9558,
+      "profiles": {
+        "1.4": "generation_profiles_coimbatore_dcac_1_4.csv",
+        "1.45": "generation_profiles_coimbatore_dcac_1_45.csv"
+      }
+    },
+    {
+      "name": "Nellore",
+      "latitude": 14.4426,
+      "longitude": 79.9865,
+      "profiles": {
+        "1.4": "generation_profiles_nellore_dcac_1_4.csv",
+        "1.45": "generation_profiles_nellore_dcac_1_45.csv"
+      }
+    }
+  ]
+}

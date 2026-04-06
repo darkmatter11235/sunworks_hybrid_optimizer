@@ -49,6 +49,53 @@ if 'df_profiles' not in st.session_state:
 if 'plant_location' not in st.session_state:
     st.session_state.plant_location = None
 
+
+def _safe_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_generation_profile_catalog(data_path: Path):
+    catalog_path = data_path / "generation_profile_catalog.json"
+    if not catalog_path.exists():
+        return []
+    try:
+        with open(catalog_path) as fp:
+            payload = json.load(fp)
+        if isinstance(payload, dict) and isinstance(payload.get("locations"), list):
+            return payload["locations"]
+    except Exception:
+        return []
+    return []
+
+
+def _select_profile_from_preset(data_path: Path, preset: dict, dc_ac_ratio: float):
+    profiles = preset.get("profiles", {}) if isinstance(preset, dict) else {}
+    if not isinstance(profiles, dict) or not profiles:
+        return None
+
+    ratio_map = []
+    for ratio_key, filename in profiles.items():
+        ratio = _safe_float(ratio_key)
+        if ratio is None:
+            continue
+        path = data_path / str(filename)
+        if path.exists():
+            ratio_map.append((ratio, path))
+
+    if not ratio_map:
+        return None
+
+    for ratio, path in ratio_map:
+        if abs(ratio - dc_ac_ratio) <= 1e-9:
+            return path
+
+    # Fallback to nearest ratio profile for this location
+    ratio_map.sort(key=lambda item: abs(item[0] - dc_ac_ratio))
+    return ratio_map[0][1]
+
 # Title and intro
 st.title("⚡ Hybrid Renewable Energy System Optimizer")
 st.markdown("Simulate and optimize solar/wind/BESS systems for minimum LCOE")
@@ -250,6 +297,39 @@ else:  # Use Local Files
 with open(config_file) as f:
     default_config = json.load(f)
 
+# Generation profile selection controls
+profile_selection_mode = "Preset Location"
+uploaded_generation_profile = None
+uploaded_generation_profile_main = None
+selected_preset = None
+catalog_locations = _load_generation_profile_catalog(data_path)
+
+st.sidebar.header("📊 Generation Profile")
+profile_selection_mode = st.sidebar.radio(
+    "Profile source",
+    ["Preset Location", "Upload New Location CSV"],
+    help="Choose a preset location profile or upload a CSV for a new location."
+)
+
+if profile_selection_mode == "Preset Location":
+    preset_names = [str(item.get("name", "")).strip() for item in catalog_locations if str(item.get("name", "")).strip()]
+    if preset_names:
+        selected_name = st.sidebar.selectbox("Preset location", preset_names)
+        selected_preset = next((item for item in catalog_locations if item.get("name") == selected_name), None)
+        if selected_preset:
+            lat = selected_preset.get("latitude")
+            lon = selected_preset.get("longitude")
+            st.sidebar.caption(f"Lat/Lon: {lat}, {lon}")
+    else:
+        st.sidebar.info("No preset catalog found. Using auto profile selection by DC/AC ratio.")
+else:
+    uploaded_generation_profile = st.sidebar.file_uploader(
+        "Upload generation profile CSV",
+        type=["csv"],
+        key="uploaded_generation_profile_csv",
+        help="Upload a generation profile for a new location if it is not in presets."
+    )
+
 # Main tabs
 tab1, tab2, tab3 = st.tabs(["🔧 Configuration", "📊 Simulation Results", "🎯 Optimization"])
 
@@ -257,6 +337,13 @@ with tab1:
     st.header("System Configuration")
 
     _loc = st.session_state.get("plant_location")
+    if selected_preset:
+        _loc = {
+            "plant_name": selected_preset.get("name", ""),
+            "place_name": selected_preset.get("name", ""),
+            "latitude": selected_preset.get("latitude", ""),
+            "longitude": selected_preset.get("longitude", ""),
+        }
     if _loc:
         _name = _loc.get("plant_name") or _loc.get("place_name", "")
         _place = _loc.get("place_name", "")
@@ -377,10 +464,20 @@ with tab1:
     st.subheader("📍 Location")
     col7, col8, col9 = st.columns(3)
 
+    location_default_name = str(default_config.get('location_name', ''))
+    location_default_lat = float(default_config.get('latitude', 0.0) or 0.0)
+    location_default_lon = float(default_config.get('longitude', 0.0) or 0.0)
+    if _loc:
+        location_default_name = str(_loc.get('plant_name') or _loc.get('place_name') or location_default_name)
+        loc_lat = _safe_float(_loc.get('latitude'))
+        loc_lon = _safe_float(_loc.get('longitude'))
+        location_default_lat = loc_lat if loc_lat is not None else location_default_lat
+        location_default_lon = loc_lon if loc_lon is not None else location_default_lon
+
     with col7:
         location_name = st.text_input(
             "Location Name",
-            value=str(default_config.get('location_name', '')),
+            value=location_default_name,
             help="Plant/site name"
         )
 
@@ -389,7 +486,7 @@ with tab1:
             "Latitude",
             min_value=-90.0,
             max_value=90.0,
-            value=float(default_config.get('latitude', 0.0) or 0.0),
+            value=location_default_lat,
             step=0.0001,
             format="%.6f"
         )
@@ -399,10 +496,19 @@ with tab1:
             "Longitude",
             min_value=-180.0,
             max_value=180.0,
-            value=float(default_config.get('longitude', 0.0) or 0.0),
+            value=location_default_lon,
             step=0.0001,
             format="%.6f"
         )
+
+    st.subheader("📥 New Location Profile")
+    st.caption("If your location is not in the preset dropdown, upload a generation profile CSV here.")
+    uploaded_generation_profile_main = st.file_uploader(
+        "Upload generation profile CSV (main page)",
+        type=["csv"],
+        key="uploaded_generation_profile_main_csv",
+        help="This uploaded file takes priority over preset selection for this run."
+    )
     
     st.subheader("💰 Financial Parameters")
     project_lifetime_years = st.slider(
@@ -444,9 +550,42 @@ with tab1:
             cfg = Config(**filtered_default)
             
             # Load profiles
-            profiles_file = select_generation_profile_file(data_path, cfg.dc_ac_ratio)
+            if uploaded_generation_profile_main is not None:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_profile_file:
+                    tmp_profile_file.write(uploaded_generation_profile_main.read())
+                    profiles_file = Path(tmp_profile_file.name)
+            elif profile_selection_mode == "Upload New Location CSV":
+                if uploaded_generation_profile is None:
+                    st.error("Please upload a generation profile CSV or switch to preset location.")
+                    st.stop()
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_profile_file:
+                    tmp_profile_file.write(uploaded_generation_profile.read())
+                    profiles_file = Path(tmp_profile_file.name)
+            elif selected_preset:
+                preset_profile = _select_profile_from_preset(data_path, selected_preset, cfg.dc_ac_ratio)
+                profiles_file = preset_profile if preset_profile else select_generation_profile_file(data_path, cfg.dc_ac_ratio)
+            else:
+                profiles_file = select_generation_profile_file(data_path, cfg.dc_ac_ratio)
+
             df_gen = pd.read_csv(profiles_file)
             df_load = pd.read_csv(load_file)
+
+            if "location_name" in df_gen.columns:
+                loc_name = df_gen["location_name"].dropna().astype(str)
+                if not loc_name.empty and not location_name:
+                    location_name = loc_name.iloc[0]
+            if "latitude" in df_gen.columns:
+                lat_vals = pd.to_numeric(df_gen["latitude"], errors="coerce").dropna()
+                if not lat_vals.empty and latitude == 0.0:
+                    latitude = float(lat_vals.iloc[0])
+            if "longitude" in df_gen.columns:
+                lon_vals = pd.to_numeric(df_gen["longitude"], errors="coerce").dropna()
+                if not lon_vals.empty and longitude == 0.0:
+                    longitude = float(lon_vals.iloc[0])
+
+            cfg.location_name = str(location_name)
+            cfg.latitude = float(latitude)
+            cfg.longitude = float(longitude)
             
             dt = pd.date_range('2024-01-01', periods=8760, freq='h')
             hour = df_gen['hour_of_day'].values if 'hour_of_day' in df_gen.columns else dt.hour.to_numpy()

@@ -287,6 +287,9 @@ def convert_template_to_profiles(
     by_ratio: Dict[float, Path] = {}
 
     for ratio, solar_column in ratio_columns:
+        location_name = plant_info.get("place_name") or plant_info.get("plant_name") or ""
+        latitude = plant_info.get("latitude") if "latitude" in plant_info else np.nan
+        longitude = plant_info.get("longitude") if "longitude" in plant_info else np.nan
         out_df = pd.DataFrame(
             {
                 "hour_index": df_hourly["hour_index"].astype(int),
@@ -294,6 +297,9 @@ def convert_template_to_profiles(
                 "solar_kwh_per_mw": pd.to_numeric(df_hourly[solar_column], errors="coerce").fillna(0.0),
                 "dc_ac_ratio": ratio,
                 "wind_kwh_per_wtg": pd.to_numeric(df_hourly["wind_kwh_per_wtg"], errors="coerce").fillna(0.0),
+                "location_name": location_name,
+                "latitude": latitude,
+                "longitude": longitude,
             }
         )
 
