@@ -22,7 +22,6 @@ from optimizer import (
     generate_configurations, evaluate_configuration
 )
 from lcoe_calculator import CostParameters, FinancialParameters
-from profile_selector import select_generation_profile_file
 from utils.generation_profiles_template import create_template, convert_template_to_profiles
 
 # Page config
@@ -92,9 +91,25 @@ def _select_profile_from_preset(data_path: Path, preset: dict, dc_ac_ratio: floa
         if abs(ratio - dc_ac_ratio) <= 1e-9:
             return path
 
-    # Fallback to nearest ratio profile for this location
-    ratio_map.sort(key=lambda item: abs(item[0] - dc_ac_ratio))
-    return ratio_map[0][1]
+    return None
+
+
+def _select_profile_exact_from_dir(data_path: Path, dc_ac_ratio: float):
+    """Return matching generation profile file for exact dc_ac_ratio, else None."""
+    for candidate in sorted(data_path.glob("generation_profiles*.csv")):
+        try:
+            ratio_series = pd.read_csv(candidate, usecols=["dc_ac_ratio"], nrows=16)["dc_ac_ratio"].dropna()
+        except Exception:
+            continue
+        if ratio_series.empty:
+            continue
+        try:
+            ratio = float(ratio_series.iloc[0])
+        except (TypeError, ValueError):
+            continue
+        if abs(ratio - dc_ac_ratio) <= 1e-9:
+            return candidate
+    return None
 
 # Title and intro
 st.title("⚡ Hybrid Renewable Energy System Optimizer")
@@ -563,12 +578,36 @@ with tab1:
                     profiles_file = Path(tmp_profile_file.name)
             elif selected_preset:
                 preset_profile = _select_profile_from_preset(data_path, selected_preset, cfg.dc_ac_ratio)
-                profiles_file = preset_profile if preset_profile else select_generation_profile_file(data_path, cfg.dc_ac_ratio)
+                if preset_profile is None:
+                    st.error(
+                        f"No generation profile data available for location '{selected_preset.get('name')}' "
+                        f"at dc_ac_ratio={cfg.dc_ac_ratio}. Please choose another ratio or upload a custom profile."
+                    )
+                    st.stop()
+                profiles_file = preset_profile
             else:
-                profiles_file = select_generation_profile_file(data_path, cfg.dc_ac_ratio)
+                exact_profile = _select_profile_exact_from_dir(data_path, cfg.dc_ac_ratio)
+                if exact_profile is None:
+                    st.error(
+                        f"No generation profile data available for dc_ac_ratio={cfg.dc_ac_ratio}. "
+                        "Please choose another ratio or upload a custom profile."
+                    )
+                    st.stop()
+                profiles_file = exact_profile
 
             df_gen = pd.read_csv(profiles_file)
             df_load = pd.read_csv(load_file)
+
+            if "dc_ac_ratio" in df_gen.columns:
+                ratio_vals = pd.to_numeric(df_gen["dc_ac_ratio"], errors="coerce").dropna()
+                if not ratio_vals.empty:
+                    file_ratio = float(ratio_vals.iloc[0])
+                    if abs(file_ratio - cfg.dc_ac_ratio) > 1e-9:
+                        st.error(
+                            f"Uploaded/selected profile has dc_ac_ratio={file_ratio}, "
+                            f"but configuration is dc_ac_ratio={cfg.dc_ac_ratio}."
+                        )
+                        st.stop()
 
             if "location_name" in df_gen.columns:
                 loc_name = df_gen["location_name"].dropna().astype(str)
