@@ -11,6 +11,7 @@ from typing import Dict, Iterable, List, Tuple
 import numpy as np
 import pandas as pd
 from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils.dataframe import dataframe_to_rows
 
 SOLAR_PREFIX = "solar_kwh_per_mw_dcac_"
@@ -39,6 +40,45 @@ def _build_template_dataframe(dc_ac_ratios: Iterable[float]) -> pd.DataFrame:
     return df
 
 
+_FILL_BLUE   = PatternFill("solid", fgColor="1F4E79")   # dark blue — section headers
+_FILL_GREY   = PatternFill("solid", fgColor="D9E1F2")   # light blue-grey — field labels
+_FILL_YELLOW = PatternFill("solid", fgColor="FFF2CC")   # light yellow — user-editable cells
+_FONT_WHITE  = Font(bold=True, color="FFFFFF", size=11)
+_FONT_BOLD   = Font(bold=True, size=10)
+_FONT_NORMAL = Font(size=10)
+_FONT_ITALIC = Font(italic=True, size=9, color="595959")
+
+_LOCATION_FIELDS = ("plant_name", "place_name", "latitude", "longitude", "state_or_region", "country")
+
+
+def _sec(ws, text: str) -> None:
+    """Append a section-header row (dark blue, white bold text, spanning cols A–C)."""
+    ws.append([text])
+    row = ws.max_row
+    for col in range(1, 4):
+        cell = ws.cell(row, col)
+        cell.fill = _FILL_BLUE
+        cell.font = _FONT_WHITE
+    ws.cell(row, 1).alignment = Alignment(wrap_text=False)
+
+
+def _note(ws, text: str) -> None:
+    """Append a single italic note row."""
+    ws.append([text])
+    ws.cell(ws.max_row, 1).font = _FONT_ITALIC
+
+
+def _field(ws, label: str, value, hint: str = "") -> None:
+    """Append a labelled input row: grey label | yellow editable cell | hint."""
+    ws.append([label, value, hint])
+    row = ws.max_row
+    ws.cell(row, 1).fill = _FILL_GREY
+    ws.cell(row, 1).font = _FONT_BOLD
+    ws.cell(row, 2).fill = _FILL_YELLOW
+    ws.cell(row, 2).font = _FONT_NORMAL
+    ws.cell(row, 3).font = _FONT_ITALIC
+
+
 def create_template(output_path: Path, dc_ac_ratios: List[float]) -> Path:
     if not dc_ac_ratios:
         raise ValueError("At least one dc_ac_ratio is required.")
@@ -46,72 +86,147 @@ def create_template(output_path: Path, dc_ac_ratios: List[float]) -> Path:
     wb = Workbook()
     ws_meta = wb.active
     ws_meta.title = "meta"
-    ws_instructions = wb.create_sheet("instructions")
-    ws_plant = wb.create_sheet("plant_info")
     ws_hourly = wb.create_sheet("hourly_profiles")
 
-    ws_meta.append(["field", "value"])
-    ws_meta.append(["description", "Generation profile input template for simulator"])
-    ws_meta.append(["hours_expected", HOURS_PER_YEAR])
-    ws_meta.append(["required_base_columns", "hour_index,hour_of_day,wind_kwh_per_wtg"])
-    ws_meta.append(["solar_column_prefix", SOLAR_PREFIX])
-    ws_meta.append(["example_solar_column", f"{SOLAR_PREFIX}1.45"])
-    ws_meta.append(["notes", "Fill hourly_profiles with 8760 rows. Keep header names unchanged."])
+    # ── column widths ────────────────────────────────────────────────────────
+    ws_meta.column_dimensions["A"].width = 24
+    ws_meta.column_dimensions["B"].width = 32
+    ws_meta.column_dimensions["C"].width = 48
 
-    ws_instructions.append(["step", "instruction"])
-    ws_instructions.append([1, "Go to plant_info and fill place_name, latitude, longitude (and optional plant_name)."])
-    ws_instructions.append([2, "Go to hourly_profiles and fill exactly 8760 rows (one row per hour)."])
-    ws_instructions.append([3, "Do not rename required columns: hour_index, hour_of_day, wind_kwh_per_wtg."])
-    ws_instructions.append([4, f"For each dc_ac_ratio, add/use a solar column named {SOLAR_PREFIX}<ratio>."])
-    ws_instructions.append([5, "Use dot format for ratio names (example: solar_kwh_per_mw_dcac_1.45)."])
-    ws_instructions.append([6, "solar_kwh_per_mw and wind_kwh_per_wtg values must be kWh basis."])
-    ws_instructions.append([7, "hour_index should run 0..8759 and hour_of_day should be 0..23 repeating."])
-    ws_instructions.append([8, "After filling, run convert command to generate generation_profiles CSVs."])
+    # ── title ─────────────────────────────────────────────────────────────────
+    ws_meta.append(["Hybrid RE Generation Profile Template"])
+    ws_meta.cell(1, 1).font = Font(bold=True, size=14, color="1F4E79")
+    ws_meta.append([])
 
-    ws_plant.append(["field", "value", "required", "notes"])
-    ws_plant.append(["plant_name", "", "no", "Plant/project label for your reference"])
-    ws_plant.append(["place_name", "", "yes", "Village/Town/City or site name"])
-    ws_plant.append(["latitude", "", "yes", "Decimal degrees, range -90 to 90"])
-    ws_plant.append(["longitude", "", "yes", "Decimal degrees, range -180 to 180"])
-    ws_plant.append(["state_or_region", "", "no", "Optional state/region"])
-    ws_plant.append(["country", "", "no", "Optional country"])
+    ws_meta.append(["This workbook is the input template for the Sunworks Hybrid Optimizer."])
+    ws_meta.cell(ws_meta.max_row, 1).font = _FONT_ITALIC
+    ws_meta.append(["Fill the Site Location section and the hourly_profiles sheet, then upload back into the app."])
+    ws_meta.cell(ws_meta.max_row, 1).font = _FONT_ITALIC
+    ws_meta.append([])
 
+    # ── section: about ────────────────────────────────────────────────────────
+    _sec(ws_meta, "ABOUT THIS TEMPLATE")
+    ws_meta.append(["Sheet", "Purpose", "Action required"])
+    for col in range(1, 4):
+        c = ws_meta.cell(ws_meta.max_row, col)
+        c.font = _FONT_BOLD
+        c.fill = PatternFill("solid", fgColor="BDD7EE")
+    ws_meta.append(["meta (this sheet)", "Instructions and site location input", "Fill Site Location section below"])
+    ws_meta.append(["hourly_profiles", f"8 760 hourly rows (one per hour of the year)", "Fill all data columns"])
+    ws_meta.append([])
+
+    # ── section: how to fill ──────────────────────────────────────────────────
+    _sec(ws_meta, "HOW TO FILL hourly_profiles")
+    steps = [
+        ("1", "The sheet must have exactly 8 760 rows of data (one per hour, Jan 1 00:00 → Dec 31 23:00)."),
+        ("2", "Do NOT rename or delete the required columns: hour_index, hour_of_day, wind_kwh_per_wtg."),
+        ("3", "hour_index must run 0 – 8 759 (integer). hour_of_day must be 0 – 23 repeating."),
+        ("4", f"For each DC/AC ratio you want to model, add a solar column named:  {SOLAR_PREFIX}<ratio>"),
+        ("5", f"Example column names:  {SOLAR_PREFIX}1.4   and   {SOLAR_PREFIX}1.45"),
+        ("6", "Solar values are in kWh per MW AC per hour (i.e. specific yield, hourly basis)."),
+        ("7", "Wind values are in kWh per WTG per hour."),
+        ("8", "Zero-fill any hours with no generation. Do not leave cells blank in data rows."),
+    ]
+    for num, text in steps:
+        ws_meta.append([f"Step {num}", text])
+        ws_meta.cell(ws_meta.max_row, 1).font = _FONT_BOLD
+        ws_meta.cell(ws_meta.max_row, 2).font = _FONT_NORMAL
+        ws_meta.cell(ws_meta.max_row, 2).alignment = Alignment(wrap_text=True)
+    ws_meta.row_dimensions[ws_meta.max_row].height = 28
+    ws_meta.append([])
+
+    # ── section: column reference ─────────────────────────────────────────────
+    _sec(ws_meta, "COLUMN REFERENCE — hourly_profiles")
+    ws_meta.append(["Column name", "Required", "Unit", "Description"])
+    for col in range(1, 5):
+        c = ws_meta.cell(ws_meta.max_row, col)
+        c.font = _FONT_BOLD
+        c.fill = PatternFill("solid", fgColor="BDD7EE")
+    ws_meta.column_dimensions["D"].width = 48
+    col_ref = [
+        ("hour_index",                  "Yes", "integer 0–8759", "Sequential hour number for the year"),
+        ("hour_of_day",                 "Yes", "integer 0–23",   "Hour within the day (0 = midnight)"),
+        ("wind_kwh_per_wtg",            "Yes", "kWh / WTG",      "Wind energy per turbine per hour"),
+        (f"{SOLAR_PREFIX}1.4",  "Per ratio", "kWh / MW AC",  "Solar specific yield for DC/AC ratio 1.4"),
+        (f"{SOLAR_PREFIX}1.45", "Per ratio", "kWh / MW AC",  "Solar specific yield for DC/AC ratio 1.45"),
+        ("(add more solar columns as needed)", "", "", ""),
+    ]
+    for row_data in col_ref:
+        ws_meta.append(list(row_data))
+        ws_meta.cell(ws_meta.max_row, 1).font = Font(bold=True, size=9, color="1F4E79")
+        for c in range(2, 5):
+            ws_meta.cell(ws_meta.max_row, c).font = _FONT_NORMAL
+    ws_meta.append([])
+
+    # ── section: site location ────────────────────────────────────────────────
+    _sec(ws_meta, "SITE LOCATION   ← fill the yellow cells")
+    _note(ws_meta, "Enter location data here. This is saved alongside the generation profiles.")
+    ws_meta.append([])
+    _field(ws_meta, "plant_name",     "", "Plant / project name  (optional)")
+    _field(ws_meta, "place_name",     "", "Village, town or site name  (required)")
+    _field(ws_meta, "latitude",       "", "Decimal degrees, −90 to 90  (required, e.g. 14.6819)")
+    _field(ws_meta, "longitude",      "", "Decimal degrees, −180 to 180  (required, e.g. 77.6006)")
+    _field(ws_meta, "state_or_region","", "State or region  (optional)")
+    _field(ws_meta, "country",        "",  "Country  (optional)")
+    ws_meta.append([])
+
+    # ── hourly_profiles sheet ─────────────────────────────────────────────────
     df_template = _build_template_dataframe(dc_ac_ratios)
     for row in dataframe_to_rows(df_template, index=False, header=True):
         ws_hourly.append(row)
-
     ws_hourly.freeze_panes = "A2"
+
+    # Bold the header row
+    for cell in ws_hourly[1]:
+        cell.font = _FONT_BOLD
+        cell.fill = PatternFill("solid", fgColor="BDD7EE")
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb.save(output_path)
     return output_path
 
 
 def _read_plant_info(template_path: Path) -> Dict[str, object]:
+    """Read location fields from the meta sheet (col A = field name, col B = value)."""
     try:
-        df_plant = pd.read_excel(template_path, sheet_name="plant_info")
+        ws_data = pd.read_excel(template_path, sheet_name="meta", header=None)
     except ValueError:
         return {}
 
-    expected_cols = {"field", "value"}
-    if not expected_cols.issubset(df_plant.columns):
-        return {}
-
     meta: Dict[str, object] = {}
-    for _, row in df_plant.iterrows():
-        field = str(row.get("field", "")).strip()
-        if not field:
+    for _, row in ws_data.iterrows():
+        if len(row) < 2:
             continue
-        value = row.get("value")
-        if pd.isna(value):
+        field = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+        if field not in _LOCATION_FIELDS:
+            continue
+        value = row.iloc[1]
+        if pd.isna(value) or str(value).strip() == "":
             continue
         meta[field] = value
+
+    # Fall back to legacy plant_info sheet if meta had nothing
+    if not meta:
+        try:
+            df_plant = pd.read_excel(template_path, sheet_name="plant_info")
+            if {"field", "value"}.issubset(df_plant.columns):
+                for _, row in df_plant.iterrows():
+                    field = str(row.get("field", "")).strip()
+                    if field not in _LOCATION_FIELDS:
+                        continue
+                    value = row.get("value")
+                    if pd.isna(value):
+                        continue
+                    meta[field] = value
+        except ValueError:
+            pass
 
     for numeric_field in ("latitude", "longitude"):
         if numeric_field in meta:
             try:
                 meta[numeric_field] = float(meta[numeric_field])
             except (TypeError, ValueError):
-                raise ValueError(f"Invalid {numeric_field} in plant_info sheet: {meta[numeric_field]}")
+                raise ValueError(f"Invalid {numeric_field}: {meta[numeric_field]}")
 
     if "latitude" in meta and not (-90.0 <= float(meta["latitude"]) <= 90.0):
         raise ValueError("Latitude must be in range -90 to 90")
