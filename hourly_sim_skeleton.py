@@ -27,6 +27,11 @@ BessMode = Literal["PV_SHIFT", "FDRE"]
 class Config:
     year: int = 1
 
+    # Site metadata
+    location_name: str = ""
+    latitude: float | None = None
+    longitude: float | None = None
+
     # Load & OA
     total_load_mw: float = 500.0
     existing_solar_mwp: float = 0.0

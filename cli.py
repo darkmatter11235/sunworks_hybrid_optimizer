@@ -128,6 +128,23 @@ def cmd_simulate(args):
         if args.summary:
             summary = {
                 'config': config_data,
+                'location': {
+                    'name': config_data.get('location_name', ''),
+                    'latitude': config_data.get('latitude', None),
+                    'longitude': config_data.get('longitude', None),
+                },
+                'capacities': {
+                    'solar_ac_mw': float(cfg.solar_ac_mw),
+                    'dc_ac_ratio': float(cfg.dc_ac_ratio),
+                    'wind_wtg_count': float(cfg.wind_wtg_count),
+                    'wind_capacity_per_wtg_mw': float(getattr(cfg, 'wind_capacity_per_wtg', 3.3)),
+                    'wind_total_mw': float(cfg.wind_wtg_count * getattr(cfg, 'wind_capacity_per_wtg', 3.3)),
+                    'bess_power_mw': float(cfg.bess_power_mw),
+                    'bess_energy_mwh': float(cfg.bess_energy_mwh),
+                    'total_load_mw': float(cfg.total_load_mw),
+                    'contracted_demand_mw': float(cfg.contracted_demand_mw),
+                    'evac_limit_mw': float(cfg.evac_limit_mw),
+                },
                 'lcoe': lcoe,
                 'results': {
                     'solar_gen_mwh': float(df_sim['solar_gen'].sum()),

@@ -38,6 +38,11 @@ def extract_all_required_data(xlsx_path, output_dir="."):
     print("-" * 70)
     
     config = {
+        # Site metadata
+        "location_name": "",
+        "latitude": 0.0,
+        "longitude": 0.0,
+
         # Load & Grid
         "total_load_mw": float(ws_sum['B8'].value or 800.0),
         "existing_solar_mwp": float(ws_sum['B10'].value or 0.0),

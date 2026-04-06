@@ -373,6 +373,36 @@ with tab1:
             value=float(default_config.get('evac_limit_mw', 800.0)),
             step=10.0
         )
+
+    st.subheader("📍 Location")
+    col7, col8, col9 = st.columns(3)
+
+    with col7:
+        location_name = st.text_input(
+            "Location Name",
+            value=str(default_config.get('location_name', '')),
+            help="Plant/site name"
+        )
+
+    with col8:
+        latitude = st.number_input(
+            "Latitude",
+            min_value=-90.0,
+            max_value=90.0,
+            value=float(default_config.get('latitude', 0.0) or 0.0),
+            step=0.0001,
+            format="%.6f"
+        )
+
+    with col9:
+        longitude = st.number_input(
+            "Longitude",
+            min_value=-180.0,
+            max_value=180.0,
+            value=float(default_config.get('longitude', 0.0) or 0.0),
+            step=0.0001,
+            format="%.6f"
+        )
     
     st.subheader("💰 Financial Parameters")
     project_lifetime_years = st.slider(
@@ -405,6 +435,9 @@ with tab1:
                 'total_load_mw': float(total_load_mw),
                 'contracted_demand_mw': float(contracted_demand_mw),
                 'evac_limit_mw': float(evac_limit_mw),
+                'location_name': str(location_name),
+                'latitude': float(latitude),
+                'longitude': float(longitude),
             }
             filtered_default.update(user_inputs)
             

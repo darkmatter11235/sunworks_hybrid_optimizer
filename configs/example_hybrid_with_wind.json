@@ -1,4 +1,7 @@
 {
+  "location_name": "",
+  "latitude": 0.0,
+  "longitude": 0.0,
   "solar_ac_mw": 600.0,
   "dc_ac_ratio": 1.45,
   "wind_wtg_count": 20,

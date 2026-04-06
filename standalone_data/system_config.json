@@ -1,4 +1,7 @@
 {
+  "location_name": "",
+  "latitude": 0.0,
+  "longitude": 0.0,
   "total_load_mw": 800.0,
   "existing_solar_mwp": 0.0,
   "contracted_demand_mw": 800.0,
