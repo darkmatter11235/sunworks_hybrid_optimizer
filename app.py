@@ -13,6 +13,7 @@ import plotly.express as px
 import tempfile
 import io
 import time
+import shutil
 from dataclasses import asdict
 
 from hourly_sim_skeleton import Config, simulate_hourly, assign_tod
@@ -22,6 +23,7 @@ from optimizer import (
 )
 from lcoe_calculator import CostParameters, FinancialParameters
 from profile_selector import select_generation_profile_file
+from utils.generation_profiles_template import create_template, convert_template_to_profiles
 
 # Page config
 st.set_page_config(
@@ -84,11 +86,36 @@ if data_source == "Use Demo Data":
 
 elif data_source == "Upload Excel File":
     st.sidebar.markdown("Upload your Excel file to extract data")
+
+    template_path = Path("standalone_data") / "generation_profiles_template.xlsx"
+    if not template_path.exists():
+        try:
+            create_template(template_path, [1.4, 1.45])
+        except Exception:
+            template_path = None
+
+    if template_path and template_path.exists():
+        with open(template_path, "rb") as template_file:
+            st.sidebar.download_button(
+                "Download Generation Template",
+                data=template_file.read(),
+                file_name="generation_profiles_template.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Download template, fill hourly_profiles data, then upload below."
+            )
     
     uploaded_file = st.sidebar.file_uploader(
         "Choose Excel file", 
         type=['xlsx', 'xls'],
+        key="full_model_upload",
         help="Upload your hybrid RE system Excel model"
+    )
+
+    uploaded_template_file = st.sidebar.file_uploader(
+        "Upload Filled Generation Template",
+        type=['xlsx'],
+        key="generation_template_upload",
+        help="Upload the downloaded generation template after filling hourly profiles."
     )
     
     if uploaded_file is not None:
@@ -117,11 +144,54 @@ elif data_source == "Upload Excel File":
             except Exception as e:
                 st.sidebar.error(f"Error extracting data: {e}")
                 st.stop()
+    elif uploaded_template_file is not None:
+        with st.spinner("Converting generation template..."):
+            try:
+                base_data_path = Path("standalone_data")
+                base_config_file = base_data_path / "system_config.json"
+                base_load_file = base_data_path / "load_profile.csv"
+                base_financial_file = base_data_path / "financial_params.json"
+
+                if not all([base_config_file.exists(), base_load_file.exists(), base_financial_file.exists()]):
+                    st.sidebar.error(
+                        "Missing baseline files in standalone_data. Expected system_config.json, "
+                        "load_profile.csv, and financial_params.json."
+                    )
+                    st.stop()
+
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_template_file:
+                    tmp_template_file.write(uploaded_template_file.read())
+                    tmp_template_path = Path(tmp_template_file.name)
+
+                extract_dir = Path(tempfile.mkdtemp())
+                convert_template_to_profiles(
+                    template_path=tmp_template_path,
+                    output_dir=extract_dir,
+                    default_ratio=1.4,
+                )
+
+                shutil.copy2(base_config_file, extract_dir / "system_config.json")
+                shutil.copy2(base_load_file, extract_dir / "load_profile.csv")
+                shutil.copy2(base_financial_file, extract_dir / "financial_params.json")
+
+                data_path = extract_dir
+                config_file = data_path / "system_config.json"
+                load_file = data_path / "load_profile.csv"
+                financial_file = data_path / "financial_params.json"
+
+                files_exist = True
+                st.sidebar.success("✅ Template converted successfully!")
+                st.session_state.data_loaded = True
+
+            except Exception as e:
+                st.sidebar.error(f"Error converting template: {e}")
+                st.stop()
     else:
         st.info("👈 Upload an Excel file to get started")
         st.markdown("""
         ### How to use:
         1. Upload your hybrid RE Excel model
+        2. Or download generation template, fill it, and upload in the same panel
         2. Configure system parameters (solar, wind, BESS)
         3. Click "Run Simulation" to see results
         

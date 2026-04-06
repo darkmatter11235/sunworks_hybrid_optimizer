@@ -11,10 +11,11 @@ A tool for simulating and optimising hybrid renewable energy systems — solar, 
 3. [Running a Simulation](#running-a-simulation)
 4. [Ready-Made Scenarios](#ready-made-scenarios)
 5. [Creating Your Own Scenario](#creating-your-own-scenario)
-6. [Running the Optimizer](#running-the-optimizer)
-7. [Understanding the Output](#understanding-the-output)
-8. [Parameter Reference](#parameter-reference)
-9. [Project Structure (for developers)](#project-structure-for-developers)
+6. [Excel Template for Generation Profiles](#excel-template-for-generation-profiles)
+7. [Running the Optimizer](#running-the-optimizer)
+8. [Understanding the Output](#understanding-the-output)
+9. [Parameter Reference](#parameter-reference)
+10. [Project Structure (for developers)](#project-structure-for-developers)
 
 ---
 
@@ -163,6 +164,52 @@ python cli.py simulate --config configs/example_hybrid_with_wind.json \
    ```
 
 > See the full [Parameter Reference](#parameter-reference) section below for every available setting.
+
+---
+
+## Excel Template for Generation Profiles
+
+If you want to maintain generation input data in Excel and support multiple `dc_ac_ratio` values, use:
+
+```bash
+python utils/generation_profiles_template.py create-template \
+    --output standalone_data/generation_profiles_template.xlsx \
+    --ratios 1.4 1.45 1.5
+```
+
+This creates an Excel workbook with:
+
+- `meta` sheet: format notes
+- `hourly_profiles` sheet: 8760 hourly rows with required columns
+
+Required base columns in `hourly_profiles`:
+
+- `hour_index`
+- `hour_of_day`
+- `wind_kwh_per_wtg`
+
+Solar profile columns are one per ratio, using this naming format:
+
+- `solar_kwh_per_mw_dcac_1.4`
+- `solar_kwh_per_mw_dcac_1.45`
+- `solar_kwh_per_mw_dcac_1.5`
+
+After filling the sheet, convert Excel to simulator-ready CSV files:
+
+```bash
+python utils/generation_profiles_template.py convert \
+    --input standalone_data/generation_profiles_template.xlsx \
+    --output-dir standalone_data
+```
+
+This writes one CSV per ratio, such as:
+
+- `generation_profiles_dcac_1_4.csv`
+- `generation_profiles_dcac_1_45.csv`
+
+And it also writes `generation_profiles.csv` as a default compatibility file.
+
+The simulator now auto-selects the right profile file based on `dc_ac_ratio` from your config.
 
 ---
 
