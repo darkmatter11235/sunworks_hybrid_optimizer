@@ -13,7 +13,6 @@ import plotly.express as px
 import tempfile
 import io
 import time
-import shutil
 from dataclasses import asdict
 
 from hourly_sim_skeleton import Config, simulate_hourly, assign_tod
@@ -22,7 +21,7 @@ from optimizer import (
     generate_configurations, evaluate_configuration
 )
 from lcoe_calculator import CostParameters, FinancialParameters
-from utils.generation_profiles_template import create_template, convert_template_to_profiles
+from utils.generation_profiles_template import create_template
 
 # Page config
 st.set_page_config(
@@ -115,165 +114,24 @@ def _select_profile_exact_from_dir(data_path: Path, dc_ac_ratio: float):
 st.title("⚡ Hybrid Renewable Energy System Optimizer")
 st.markdown("Simulate and optimize solar/wind/BESS systems for minimum LCOE")
 
-# Data Source Selection (main screen)
-with st.expander("📁 Data Source", expanded=not st.session_state.get('data_loaded', False)):
-    data_source = st.radio(
-        "Choose data source:",
-        ["Use Demo Data", "Upload Excel File", "Use Local Files"],
-        horizontal=True,
-        help="Demo: Try the tool with sample data\nUpload: Extract data from your Excel\nLocal: Use pre-extracted standalone_data/"
-    )
+# Load data from standalone_data
+data_path = Path("standalone_data")
+config_file = data_path / "system_config.json"
+load_file = data_path / "load_profile.csv"
+financial_file = data_path / "financial_params.json"
 
-    files_exist = False
-    default_config = None
+if not all([config_file.exists(), load_file.exists(), financial_file.exists()]):
+    st.error("⚠️ Data files not found in standalone_data/. Required: system_config.json, load_profile.csv, financial_params.json")
+    st.stop()
 
-    # Handle different data sources
-    if data_source == "Use Demo Data":
-        st.info("🎯 Using demo configuration (830 MW solar, 50 MW BESS)")
+loc_file = data_path / "plant_location.json"
+if loc_file.exists():
+    with open(loc_file) as _lf:
+        st.session_state.plant_location = json.load(_lf)
+else:
+    st.session_state.plant_location = None
+st.session_state.data_loaded = True
 
-        demo_path = Path("standalone_data")
-        if demo_path.exists():
-            data_path = demo_path
-            config_file = demo_path / "system_config.json"
-            load_file = demo_path / "load_profile.csv"
-            financial_file = demo_path / "financial_params.json"
-            generation_profile_files = list(data_path.glob("generation_profiles*.csv"))
-            files_exist = all([f.exists() for f in [config_file, load_file, financial_file]]) and bool(generation_profile_files)
-
-        if not files_exist:
-            st.warning("⚠️ Demo data not available. Please upload an Excel file or use local files.")
-            st.stop()
-
-        loc_file = data_path / "plant_location.json"
-        if loc_file.exists():
-            with open(loc_file) as _lf:
-                st.session_state.plant_location = json.load(_lf)
-        else:
-            st.session_state.plant_location = None
-        st.session_state.data_loaded = True
-
-    elif data_source == "Upload Excel File":
-        uploaded_file = st.file_uploader(
-            "Choose Excel file",
-            type=['xlsx', 'xls'],
-            key="full_model_upload",
-            help="Upload your hybrid RE system Excel model"
-        )
-
-        uploaded_template_file = st.file_uploader(
-            "Upload Filled Generation Template",
-            type=['xlsx'],
-            key="generation_template_upload",
-            help="Upload the downloaded generation template after filling hourly profiles."
-        )
-
-        if uploaded_file is not None:
-            with st.spinner("Extracting data from Excel..."):
-                try:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
-                        tmp_file.write(uploaded_file.read())
-                        tmp_path = tmp_file.name
-
-                    from utils.extract_standalone_data import extract_standalone_data
-                    extract_dir = tempfile.mkdtemp()
-                    extract_standalone_data(tmp_path, extract_dir)
-
-                    data_path = Path(extract_dir)
-                    config_file = data_path / "system_config.json"
-                    load_file = data_path / "load_profile.csv"
-                    financial_file = data_path / "financial_params.json"
-
-                    files_exist = True
-                    st.success("✅ Data extracted successfully!")
-                    st.session_state.data_loaded = True
-
-                except Exception as e:
-                    st.error(f"Error extracting data: {e}")
-                    st.stop()
-        elif uploaded_template_file is not None:
-            with st.spinner("Converting generation template..."):
-                try:
-                    base_data_path = Path("standalone_data")
-                    base_config_file = base_data_path / "system_config.json"
-                    base_load_file = base_data_path / "load_profile.csv"
-                    base_financial_file = base_data_path / "financial_params.json"
-
-                    if not all([base_config_file.exists(), base_load_file.exists(), base_financial_file.exists()]):
-                        st.error(
-                            "Missing baseline files in standalone_data. Expected system_config.json, "
-                            "load_profile.csv, and financial_params.json."
-                        )
-                        st.stop()
-
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_template_file:
-                        tmp_template_file.write(uploaded_template_file.read())
-                        tmp_template_path = Path(tmp_template_file.name)
-
-                    extract_dir = Path(tempfile.mkdtemp())
-                    convert_template_to_profiles(
-                        template_path=tmp_template_path,
-                        output_dir=extract_dir,
-                        default_ratio=1.4,
-                    )
-
-                    shutil.copy2(base_config_file, extract_dir / "system_config.json")
-                    shutil.copy2(base_load_file, extract_dir / "load_profile.csv")
-                    shutil.copy2(base_financial_file, extract_dir / "financial_params.json")
-
-                    data_path = extract_dir
-                    config_file = data_path / "system_config.json"
-                    load_file = data_path / "load_profile.csv"
-                    financial_file = data_path / "financial_params.json"
-
-                    loc_file = data_path / "plant_location.json"
-                    if loc_file.exists():
-                        with open(loc_file) as _lf:
-                            st.session_state.plant_location = json.load(_lf)
-                    else:
-                        st.session_state.plant_location = None
-
-                    files_exist = True
-                    st.success("✅ Template converted successfully!")
-                    st.session_state.data_loaded = True
-
-                except Exception as e:
-                    st.error(f"Error converting template: {e}")
-                    st.stop()
-        else:
-            st.info("Upload an Excel file or a filled generation template above to get started.")
-            st.stop()
-
-    else:  # Use Local Files
-        data_dir = st.text_input("Data Directory", "standalone_data")
-        data_path = Path(data_dir)
-        config_file = data_path / "system_config.json"
-        load_file = data_path / "load_profile.csv"
-        financial_file = data_path / "financial_params.json"
-        generation_profile_files = list(data_path.glob("generation_profiles*.csv"))
-
-        files_exist = all([f.exists() for f in [config_file, load_file, financial_file]]) and bool(generation_profile_files)
-
-        if not files_exist:
-            st.error("⚠️ Data files not found!")
-            st.markdown(f"""
-            Required files in `{data_dir}`:
-            - system_config.json
-            - generation_profiles*.csv
-            - load_profile.csv
-            - financial_params.json
-
-            Run: `python utils/extract_standalone_data.py your_file.xlsx`
-            """)
-            st.stop()
-        else:
-            st.success("✓ Data files loaded")
-            loc_file = data_path / "plant_location.json"
-            if loc_file.exists():
-                with open(loc_file) as _lf:
-                    st.session_state.plant_location = json.load(_lf)
-            else:
-                st.session_state.plant_location = None
-            st.session_state.data_loaded = True
 
 # Load default configuration
 with open(config_file) as f:
