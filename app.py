@@ -313,37 +313,41 @@ with open(config_file) as f:
     default_config = json.load(f)
 
 # Generation profile selection controls
-profile_selection_mode = "Preset Location"
 uploaded_generation_profile = None
 uploaded_generation_profile_main = None
 selected_preset = None
 catalog_locations = _load_generation_profile_catalog(data_path)
 
-st.sidebar.header("📊 Generation Profile")
-profile_selection_mode = st.sidebar.radio(
-    "Profile source",
-    ["Preset Location", "Upload New Location CSV"],
-    help="Choose a preset location profile or upload a CSV for a new location."
+# --- Location selector on main screen ---
+preset_names = [str(item.get("name", "")).strip() for item in catalog_locations if str(item.get("name", "")).strip()]
+location_options = preset_names + ["Location not available"]
+
+st.subheader("📍 Select Location")
+selected_location = st.selectbox(
+    "Location",
+    location_options,
+    label_visibility="collapsed",
+    help="Choose a preset location or select 'Location not available' to upload your own generation profile."
 )
 
-if profile_selection_mode == "Preset Location":
-    preset_names = [str(item.get("name", "")).strip() for item in catalog_locations if str(item.get("name", "")).strip()]
-    if preset_names:
-        selected_name = st.sidebar.selectbox("Preset location", preset_names)
-        selected_preset = next((item for item in catalog_locations if item.get("name") == selected_name), None)
-        if selected_preset:
-            lat = selected_preset.get("latitude")
-            lon = selected_preset.get("longitude")
-            st.sidebar.caption(f"Lat/Lon: {lat}, {lon}")
-    else:
-        st.sidebar.info("No preset catalog found. Using auto profile selection by DC/AC ratio.")
-else:
-    uploaded_generation_profile = st.sidebar.file_uploader(
+if selected_location == "Location not available":
+    profile_selection_mode = "Upload New Location CSV"
+    st.info("No preset profile for your location. Upload a generation profile CSV below.")
+    uploaded_generation_profile = st.file_uploader(
         "Upload generation profile CSV",
         type=["csv"],
         key="uploaded_generation_profile_csv",
-        help="Upload a generation profile for a new location if it is not in presets."
+        help="Upload a generation profile CSV for your location."
     )
+else:
+    profile_selection_mode = "Preset Location"
+    selected_preset = next((item for item in catalog_locations if item.get("name") == selected_location), None)
+    if selected_preset:
+        _plat = selected_preset.get("latitude")
+        _plon = selected_preset.get("longitude")
+        st.caption(f"Coordinates: {_plat}° N, {_plon}° E")
+
+st.divider()
 
 # Main tabs
 tab1, tab2, tab3 = st.tabs(["🔧 Configuration", "📊 Simulation Results", "🎯 Optimization"])
