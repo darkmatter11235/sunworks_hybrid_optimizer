@@ -480,55 +480,12 @@ with tab1:
             step=10.0
         )
 
-    st.subheader("📍 Location")
-    col7, col8, col9 = st.columns(3)
+    location_name = str(_loc.get('plant_name') or _loc.get('place_name') or default_config.get('location_name', '')) if _loc else str(default_config.get('location_name', ''))
+    _loc_lat = _safe_float(_loc.get('latitude')) if _loc else None
+    _loc_lon = _safe_float(_loc.get('longitude')) if _loc else None
+    latitude = _loc_lat if _loc_lat is not None else float(default_config.get('latitude', 0.0) or 0.0)
+    longitude = _loc_lon if _loc_lon is not None else float(default_config.get('longitude', 0.0) or 0.0)
 
-    location_default_name = str(default_config.get('location_name', ''))
-    location_default_lat = float(default_config.get('latitude', 0.0) or 0.0)
-    location_default_lon = float(default_config.get('longitude', 0.0) or 0.0)
-    if _loc:
-        location_default_name = str(_loc.get('plant_name') or _loc.get('place_name') or location_default_name)
-        loc_lat = _safe_float(_loc.get('latitude'))
-        loc_lon = _safe_float(_loc.get('longitude'))
-        location_default_lat = loc_lat if loc_lat is not None else location_default_lat
-        location_default_lon = loc_lon if loc_lon is not None else location_default_lon
-
-    with col7:
-        location_name = st.text_input(
-            "Location Name",
-            value=location_default_name,
-            help="Plant/site name"
-        )
-
-    with col8:
-        latitude = st.number_input(
-            "Latitude",
-            min_value=-90.0,
-            max_value=90.0,
-            value=location_default_lat,
-            step=0.0001,
-            format="%.6f"
-        )
-
-    with col9:
-        longitude = st.number_input(
-            "Longitude",
-            min_value=-180.0,
-            max_value=180.0,
-            value=location_default_lon,
-            step=0.0001,
-            format="%.6f"
-        )
-
-    st.subheader("📥 New Location Profile")
-    st.caption("If your location is not in the preset dropdown, upload a generation profile CSV here.")
-    uploaded_generation_profile_main = st.file_uploader(
-        "Upload generation profile CSV (main page)",
-        type=["csv"],
-        key="uploaded_generation_profile_main_csv",
-        help="This uploaded file takes priority over preset selection for this run."
-    )
-    
     st.subheader("💰 Financial Parameters")
     project_lifetime_years = st.slider(
         "Project Lifetime (Years)",
